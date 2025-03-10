@@ -43,20 +43,7 @@ module IntegrationSpec
 end
 
 RSpec.describe 'Lutaml::Hal::IntegrationSpec' do
-  let(:api_endpoint) { 'https://api.w3.org' }
-
-  let(:model_register) do
-    register = Lutaml::Hal::ModelRegister.new
-    # Register the model with the registry
-    register.register(IntegrationSpec::Specification, 'https://api.w3.org/specifications/*')
-    register.register(IntegrationSpec::SpecificationIndex, 'https://api.w3.org/specifications')
-
-    register
-  end
-
-  let(:register) do
-    model_register
-  end
+  let(:api_url) { 'https://api.w3.org' }
 
   let(:stubs) { Faraday::Adapter::Test::Stubs.new }
 
@@ -70,10 +57,25 @@ RSpec.describe 'Lutaml::Hal::IntegrationSpec' do
 
   let(:client) do
     Lutaml::Hal::Client.new(
-      api_endpoint: api_endpoint,
+      api_url: api_url,
       connection: connection
-    ).tap do |c|
-      model_register.client = c
+    )
+  end
+
+  let(:register) do
+    Lutaml::Hal::ModelRegister.new(client: client).tap do |r|
+      r.add_endpoint(
+        id: :spec_index,
+        type: :index,
+        url: '/specifications',
+        model: IntegrationSpec::SpecificationIndex
+      )
+      r.add_endpoint(
+        id: :spec_resource,
+        type: :resource,
+        url: '/specifications/{id}',
+        model: IntegrationSpec::Specification
+      )
     end
   end
 
@@ -160,15 +162,13 @@ RSpec.describe 'Lutaml::Hal::IntegrationSpec' do
     end
 
     it 'retrieves specifications successfully' do
-      response = client.get('/specifications')
-      model = IntegrationSpec::SpecificationIndex.from_json(response.to_json)
+      index = register.fetch(:spec_index)
+      expect(index).to be_a(Lutaml::Hal::Resource)
 
-      expect(model).to be_a(Lutaml::Hal::Resource)
+      expect(index.links).to be_a(Lutaml::Model::Serializable)
+      expect(index.links.specifications).to all(be_a(Lutaml::Hal::Link))
 
-      expect(model.links).to be_a(Lutaml::Model::Serializable)
-      expect(model.links.specifications).to all(be_a(Lutaml::Hal::Link))
-
-      first_specification_link = model.links.specifications.first
+      first_specification_link = index.links.specifications.first
       first_specification = first_specification_link.realize(register)
       expect(first_specification.shortname).to be_eql('png-2')
       expect(first_specification.editor_draft).to be_eql('https://w3c.github.io/png/')
@@ -179,10 +179,8 @@ RSpec.describe 'Lutaml::Hal::IntegrationSpec' do
       stubs.verify_stubbed_calls
     end
 
-    it 'retrieves a specific specification by URL' do
-      response = client.get('/specifications/png-2')
-      model = IntegrationSpec::Specification.from_json(response.to_json)
-
+    it 'retrieves a specific specification by id' do
+      model = register.fetch(:spec_resource, id: 'png-2')
       expect(model).to be_a(IntegrationSpec::Specification)
       expect(model.shortname).to eq('png-2')
     end

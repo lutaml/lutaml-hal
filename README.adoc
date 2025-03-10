@@ -56,20 +56,82 @@ Or install it yourself as:
 $ gem install lutaml-hal
 ----
 
+== Structure
+
+The classes in this library are organized into the following modules:
+
+`Lutaml::Hal::Client`::
+A client for making HTTP requests to HAL APIs. It includes methods for setting
+the API endpoint, making GET requests, and handling responses.
++
+NOTE: Only GET requests are supported at the moment.
+
+`Lutaml::Hal::ModelRegister`::
+A registry for managing HAL resource models and their endpoints. It allows you
+to register models, define their relationships, and fetch resources from the
+API.
+
+`Lutaml::Hal::Resource`::
+A base class for defining HAL resource models. It includes methods for
+defining attributes, links, and key-value mappings for resources.
+
+`Lutaml::Hal::Link`::
+A class for defining HAL links. It includes methods for specifying the
+relationship between resources and their links, as well as methods for
+resolving links to their target resources.
+
+`Lutaml::Hal::Page`::
+A class for handling pagination in HAL APIs. It includes methods for
+defining pagination attributes, such as `page`, `pages`, `limit`, and
+`total`, as well as methods for accessing linked resources within a page.
+
+
 == Usage
 
-=== Creating a Client
+=== General
+
+In order to interact with a HAL API, the following steps are required:
+
+. Create a `Client` that points to the API endpoint.
+. Create a `ModelRegister` to manage the resource models and their
+respective endpoints.
+. Define the resource models using the `Resource` class.
+. Register the models with the `ModelRegister`.
+. Fetch resources from the API using the `ModelRegister`.
+.. Once the resources are fetched, you can access their attributes and links
+and navigate through the resource graph.
+. Pagination, such as on "index" type pages, can be handled by subclassing the `Page` class.
+The `Page` class itself is also implemented as a `Resource`, so you can
+use the same methods to access the page's attributes and links.
+
+
+=== Creating a HAL model register
 
 [source,ruby]
 ----
 require 'lutaml-hal'
 
 # Create a new client with API endpoint
-client = Lutaml::Hal::Client.new(api_endpoint: 'https://api.example.com')
-register = Lutaml::Hal::ModelRegister.new
-register.client = client
+client = Lutaml::Hal::Client.new(api_url: 'https://api.example.com')
+register = Lutaml::Hal::ModelRegister.new(client: client)
+# Or set client later, `register.client = client`
 
-client.get('/products')
+register.add_endpoint(
+  id: :product_index,
+  type: :index,
+  url: '/products',
+  model: Product
+)
+register.add_endpoint(
+  id: :product_resource,
+  type: :resource,
+  url: '/products/{id}',
+  model: Product
+)
+
+register.fetch(:product_index)
+# => client.get('/products')
+
 # => {
 # "page": 1,
 # "pages": 10,
@@ -84,9 +146,35 @@ client.get('/products')
 #     { "id": 2, "name": "Product 2", "price": 15.0 }
 #   ]
 # }
+
+product_1 = register.fetch(:product_resource, id: 1)
+# => client.get('/products/1')
+
+# => {
+# "id": 1,
+# "name": "Product 1",
+# "price": 10.0,
+# "_links": {
+#   "self": { "href": "/products/1" },
+#   "category": { "href": "/categories/1", "title": "Category 1" },
+#   "related": [
+#      { "href": "/products/3", "title": "Product 3" },
+#      { "href": "/products/5", "title": "Product 5" }
+#   ]
+# }
+# }
+
+product_1
+# => #<Product id: 1, name: "Product 1", price: 10.0, links:
+#      #<ProductLinks self: <ProductLink href: "/products/1">,
+#                     category: <ProductLink href: "/categories/1", title: "Category 1">,
+#                     related: [
+#                         <ProductLink href: "/products/3", title: "Product 3">,
+#                         <ProductLink href: "/products/5", title: "Product 5">
+#                     ]}>
 ----
 
-=== Defining Resources
+=== Defining resource models
 
 [source,ruby]
 ----
@@ -110,6 +198,8 @@ module MyApi
   Lutaml::Hal::ModelRegister.register(Product, '/products/{id}')
 end
 ----
+
+=== Registering endpoints
 
 === Fetching Resources
 

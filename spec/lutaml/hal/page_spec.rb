@@ -18,19 +18,7 @@ module PageSpec
 end
 
 RSpec.describe Lutaml::Hal::Page do
-  let(:api_endpoint) { 'https://api.example.com' }
-
-  let(:model_register) do
-    register = Lutaml::Hal::ModelRegister.new
-    # Register the model with the registry
-    register.register(PageSpec::PageModel, '/sample_pages*')
-
-    register
-  end
-
-  let(:register) do
-    model_register
-  end
+  let(:api_url) { 'https://api.example.com' }
 
   let(:stubs) { Faraday::Adapter::Test::Stubs.new }
 
@@ -44,10 +32,25 @@ RSpec.describe Lutaml::Hal::Page do
 
   let(:client) do
     Lutaml::Hal::Client.new(
-      api_endpoint: api_endpoint,
+      api_url: api_url,
       connection: connection
-    ).tap do |c|
-      model_register.client = c
+    )
+  end
+
+  let(:register) do
+    Lutaml::Hal::ModelRegister.new(client: client).tap do |r|
+      r.add_endpoint(
+        id: :pages_index,
+        type: :index,
+        url: '/sample_pages',
+        model: PageSpec::PageModel
+      )
+      r.add_endpoint(
+        id: :page_resource,
+        type: :resource,
+        url: '/sample_pages/{page}',
+        model: PageSpec::PageModel
+      )
     end
   end
 
@@ -131,12 +134,11 @@ RSpec.describe Lutaml::Hal::Page do
       end
     end
 
-    let(:api_endpoint) { 'https://api.example.com' }
+    let(:api_url) { 'https://api.example.com' }
 
     it 'retrieves the first page' do
-      response = client.get('/sample_pages')
-      page_1 = PageSpec::PageModel.from_json(response.to_json)
-      page_2 = page_1.links.next.realize(model_register)
+      register.fetch(:pages_index)
+      page_2 = register.fetch(:page_resource, page: 2)
       expect(page_2).to be_a(PageSpec::PageModel)
       expect(page_2.page).to eq(2)
       expect(page_2.limit).to eq(10)
@@ -146,9 +148,7 @@ RSpec.describe Lutaml::Hal::Page do
     end
 
     it 'retrieves the second page' do
-      client
-      page_1 = PageSpec::PageModel.from_json(response_page_1.to_json)
-      page_2 = page_1.links.next.realize(model_register)
+      page_2 = register.fetch(:page_resource, page: 2)
       expect(page_2).to be_a(PageSpec::PageModel)
       expect(page_2.page).to eq(2)
       expect(page_2.limit).to eq(10)
@@ -158,9 +158,7 @@ RSpec.describe Lutaml::Hal::Page do
     end
 
     it 'retrieves the last page' do
-      client
-      page_1 = PageSpec::PageModel.from_json(response_page_1.to_json)
-      page_5 = page_1.links.last.realize(model_register)
+      page_5 = register.fetch(:page_resource, page: 5)
       expect(page_5).to be_a(PageSpec::PageModel)
       expect(page_5.page).to eq(5)
       expect(page_5.limit).to eq(5)

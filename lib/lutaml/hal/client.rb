@@ -10,10 +10,10 @@ module Lutaml
   module Hal
     # HAL Client for making HTTP requests to HAL APIs
     class Client
-      attr_reader :last_response, :api_endpoint, :connection
+      attr_reader :last_response, :api_url, :connection
 
       def initialize(options = {})
-        @api_endpoint = options[:api_endpoint] || raise(ArgumentError, 'api_endpoint is required')
+        @api_url = options[:api_url] || raise(ArgumentError, 'api_url is required')
         @connection = options[:connection] || create_connection
         @params_default = options[:params_default] || {}
         @debug = options[:debug] || !ENV['DEBUG_API'].nil?
@@ -24,7 +24,7 @@ module Lutaml
       # Get a resource by its full URL
       def get_by_url(url, params = {})
         # Strip API endpoint if it's included
-        path = url.sub(%r{^#{@api_endpoint}/}, '')
+        path = url.sub(%r{^#{@api_url}/}, '')
         get(path, params)
       end
 
@@ -53,7 +53,7 @@ module Lutaml
       private
 
       def create_connection
-        Faraday.new(url: @api_endpoint) do |conn|
+        Faraday.new(url: @api_url) do |conn|
           conn.use Faraday::FollowRedirects::Middleware
           conn.request :json
           conn.response :json, content_type: /\bjson$/
