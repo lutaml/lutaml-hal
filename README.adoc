@@ -1,0 +1,154 @@
+= LutaML Model for HAL
+
+https://github.com/lutaml/lutaml-hal[image:https://img.shields.io/github/stars/lutaml/lutaml-hal.svg?style=social[GitHub Stars]]
+https://github.com/lutaml/lutaml-hal[image:https://img.shields.io/github/forks/lutaml/lutaml-hal.svg?style=social[GitHub Forks]]
+image:https://img.shields.io/github/license/lutaml/lutaml-hal.svg[License]
+image:https://img.shields.io/github/actions/workflow/status/lutaml/lutaml-hal/test.yml?branch=main[Build Status]
+image:https://img.shields.io/gem/v/lutaml-hal.svg[RubyGems Version]
+
+
+== Purpose
+
+The `lutaml-hal` gem provides a framework for interacting with HAL-compliant
+APIs using the power of LutaML Models.
+
+Hypertext Application Language (HAL)
+(https://www.ietf.org/archive/id/draft-kelly-json-hal-11.html[HAL Internet-Draft])
+is a simple format for representing
+resources and their relationships in a hypermedia-driven API.
+
+It allows clients to navigate and interact with resources using links, making it
+easier to build flexible and extensible applications.
+
+This library provides a set of classes and methods for modeling HAL resources,
+links, and collections, as well as a client for making HTTP requests to HAL
+APIs.
+
+== Features
+
+* Classes for modeling HAL resources and links
+* A client for making HTTP requests to HAL APIs
+* Tools for pagination and resource resolution
+* Integration with the `lutaml-model` serialization framework
+* Error handling and response validation for API interactions
+
+
+== Installation
+
+Add this line to your application's Gemfile:
+
+[source,ruby]
+----
+gem 'lutaml-hal'
+----
+
+And then execute:
+
+[source,sh]
+----
+$ bundle install
+----
+
+Or install it yourself as:
+
+[source,sh]
+----
+$ gem install lutaml-hal
+----
+
+== Usage
+
+=== Creating a Client
+
+[source,ruby]
+----
+require 'lutaml-hal'
+
+# Create a new client with API endpoint
+client = Lutaml::Hal::Client.new(api_endpoint: 'https://api.example.com')
+register = Lutaml::Hal::ModelRegister.new
+register.client = client
+
+client.get('/products')
+# => {
+# "page": 1,
+# "pages": 10,
+# "limit": 10,
+# "total": 45,
+# "_links": {
+#   "self": { "href": "/products/1" },
+#   "next": { "href": "/products/2" },
+#   "last": { "href": "/products/5" },
+#   "products": [
+#     { "id": 1, "name": "Product 1", "price": 10.0 },
+#     { "id": 2, "name": "Product 2", "price": 15.0 }
+#   ]
+# }
+----
+
+=== Defining Resources
+
+[source,ruby]
+----
+module MyApi
+  class Product < Lutaml::Hal::Resource
+    attribute :id, :string
+    attribute :name, :string
+    attribute :price, :float
+
+    hal_link :self, key: 'self', realize_class: 'Product'
+    hal_link :category, key: 'category', realize_class: 'Category'
+
+    key_value do
+      map 'id', to: :id
+      map 'name', to: :name
+      map 'price', to: :price
+    end
+  end
+
+  # Register the model with the registry
+  Lutaml::Hal::ModelRegister.register(Product, '/products/{id}')
+end
+----
+
+=== Fetching Resources
+
+[source,ruby]
+----
+# Assume that the client is already created and registered at
+# the ModelRegister
+# Get a resource
+product = client.get('products/123')
+product_resource = MyApi::Product.from_json(product.to_json)
+
+# Follow a link
+category = product_resource.category.realize(register)
+----
+
+=== Working with Collections
+
+[source,ruby]
+----
+class ProductPage < Lutaml::Hal::Page
+  # Define the relationship between page and items
+end
+
+response = client.get('/products')
+products = ProductPage.from_json(response.to_json)
+
+# Access pagination info
+puts "Page #{products.page} of #{products.pages}, total: #{products.total}"
+
+# Access linked items
+products.links.products.each do |product|
+  puts "#{product.name}: $#{product.price}"
+end
+----
+
+
+== License and Copyright
+
+This project is licensed under the BSD 2-clause License.
+See the link:LICENSE.md[] file for details.
+
+Copyright Ribose.
