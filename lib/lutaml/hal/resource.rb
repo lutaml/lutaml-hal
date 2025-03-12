@@ -39,7 +39,7 @@ module Lutaml
           # Use the provided "key" as the attribute name
           attribute_name = attr_key.to_sym
 
-          Hal.debug_log "Defining HAL link for #{attr_key} with realize class #{realize_class}"
+          Hal.debug_log "Defining HAL link for `#{attr_key}` with realize class `#{realize_class}`"
 
           # Create a dynamic Link subclass name based on "realize_class", the
           # class to realize for a Link object, if `link_class:` is not provided.
@@ -54,7 +54,7 @@ module Lutaml
 
               # Define the mapping for the attribute
               key_value do
-                map attr_key, to: attribute_name
+                map key, to: attribute_name
               end
             end
           end
