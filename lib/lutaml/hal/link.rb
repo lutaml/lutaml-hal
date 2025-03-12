@@ -43,7 +43,7 @@ module Lutaml
         register = Lutaml::Hal::GlobalRegister.instance.get(register_id)
         if register.nil?
           raise 'GlobalRegister in use but unable to find the register. '\
-          'Please provide a register to the `#realize` method to resolve the link'
+            'Please provide a register to the `#realize` method to resolve the link'
         end
 
         register
