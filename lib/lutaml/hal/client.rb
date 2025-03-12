@@ -19,12 +19,19 @@ module Lutaml
         @debug = options[:debug] || !ENV['DEBUG_API'].nil?
         @cache = options[:cache] || {}
         @cache_enabled = options[:cache_enabled] || false
+
+        @api_url = strip_api_url(@api_url)
+      end
+
+      # Strip any trailing slash from the API URL
+      def strip_api_url(url)
+        url.sub(%r{/\Z}, '')
       end
 
       # Get a resource by its full URL
       def get_by_url(url, params = {})
         # Strip API endpoint if it's included
-        path = url.sub(%r{^#{@api_url}/}, '')
+        path = strip_api_url(url)
         get(path, params)
       end
 
@@ -62,7 +69,7 @@ module Lutaml
       end
 
       def handle_response(response, url)
-        debug_log(response, url) if @debug
+        debug_api_log(response, url) if @debug
 
         case response.status
         when 200..299
@@ -80,11 +87,11 @@ module Lutaml
         end
       end
 
-      def debug_log(response, url)
+      def debug_api_log(response, url)
         if defined?(Rainbow)
-          puts Rainbow("\n===== DEBUG: HAL API REQUEST =====").blue
+          puts Rainbow("\n===== Lutaml::Hal DEBUG: HAL API REQUEST =====").blue
         else
-          puts "\n===== DEBUG: HAL API REQUEST ====="
+          puts "\n===== Lutaml::Hal DEBUG: HAL API REQUEST ====="
         end
 
         puts "URL: #{url}"

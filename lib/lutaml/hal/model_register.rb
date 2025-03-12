@@ -6,9 +6,10 @@ module Lutaml
   module Hal
     # Register to map URL patterns to model classes
     class ModelRegister
-      attr_accessor :models, :client
+      attr_accessor :models, :client, :register_name
 
-      def initialize(client: nil)
+      def initialize(name:, client: nil)
+        @register_name = name
         # If `client` is not set, it can be set later
         @client = client
         @models = {}
@@ -39,27 +40,59 @@ module Lutaml
         url = interpolate_url(endpoint[:url], params)
         response = client.get(url)
 
-        endpoint[:model].from_json(response.to_json)
+        realized_model = endpoint[:model].from_json(response.to_json)
+
+        mark_model_links_with_register(realized_model)
+        realized_model
       end
 
-      def resolve_and_cast(href)
+      def resolve_and_cast(link, href)
         raise 'Client not configured' unless client
 
-        debug_log("href #{href}")
+        Hal.debug_log("resolve_and_cast: link #{link}, href #{href}")
         response = client.get_by_url(href)
 
-        # TODO: Merge more content into the resource
+        # TODO: Merge full Link content into the resource?
         response_with_link_details = response.to_h.merge({ 'href' => href })
 
         href_path = href.sub(client.api_url, '')
+
         model_class = find_matching_model_class(href_path)
         raise LinkResolutionError, "Unregistered URL pattern: #{href}" unless model_class
 
-        debug_log("model_class #{model_class}")
-        debug_log("response: #{response.inspect}")
-        debug_log("amended: #{response_with_link_details}")
+        Hal.debug_log("resolve_and_cast: resolved to model_class #{model_class}")
+        Hal.debug_log("resolve_and_cast: response: #{response.inspect}")
+        Hal.debug_log("resolve_and_cast: amended: #{response_with_link_details}")
 
-        model_class.from_json(response_with_link_details.to_json)
+        model = model_class.from_json(response_with_link_details.to_json)
+        mark_model_links_with_register(model)
+        model
+      end
+
+      # Recursively mark all models in the link with the register name
+      # This is used to ensure that all links in the model are registered
+      # with the same register name for consistent resolution
+      def mark_model_links_with_register(inspecting_model)
+        return unless inspecting_model.is_a?(Lutaml::Model::Serializable)
+
+        inspecting_model.instance_variable_set("@#{Hal::REGISTER_ID_ATTR_NAME}", @register_name)
+
+        # Recursively process model attributes to mark links with this register
+        inspecting_model.class.attributes.each_pair do |key, config|
+          attr_type = config.type
+          next unless attr_type < Lutaml::Hal::Resource ||
+                      attr_type < Lutaml::Hal::Link ||
+                      attr_type < Lutaml::Hal::LinkSet
+
+          value = inspecting_model.send(key)
+          next if value.nil?
+
+          # Handle both array and single values with the same logic
+          values = value.is_a?(Array) ? value : [value]
+          values.each { |item| mark_model_links_with_register(item) }
+        end
+
+        inspecting_model
       end
 
       private
@@ -103,11 +136,15 @@ module Lutaml
         pattern_with_wildcards = pattern.gsub(/\{[^}]+\}/, '*')
         # Convert * wildcards to regex pattern
         regex = Regexp.new("^#{pattern_with_wildcards.gsub('*', '[^/]+')}$")
-        regex.match?(url)
-      end
 
-      def debug_log(message)
-        puts "DEBUG: #{message}" if ENV['DEBUG_API']
+        Hal.debug_log("pattern_match?: regex: #{regex.inspect}")
+        Hal.debug_log("pattern_match?: href to match #{url}")
+        Hal.debug_log("pattern_match?: pattern to match #{pattern_with_wildcards}")
+
+        matches = regex.match?(url)
+        Hal.debug_log("pattern_match?: matches = #{matches}")
+
+        matches
       end
     end
   end

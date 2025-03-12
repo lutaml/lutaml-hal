@@ -7,6 +7,10 @@ module Lutaml
   module Hal
     # Resource class for all HAL resources
     class Resource < Lutaml::Model::Serializable
+      # This is the model register that has fetched this resource, and
+      # will be used to resolve links unless overriden in resource#realize()
+      attr_accessor Hal::REGISTER_ID_ATTR_NAME.to_sym
+
       class << self
         attr_accessor :link_definitions
 
@@ -35,13 +39,15 @@ module Lutaml
           # Use the provided "key" as the attribute name
           attribute_name = attr_key.to_sym
 
+          Hal.debug_log "Defining HAL link for #{attr_key} with realize class #{realize_class}"
+
           # Create a dynamic Link subclass name based on "realize_class", the
           # class to realize for a Link object, if `link_class:` is not provided.
           link_klass = link_class || create_link_class(realize_class)
 
           # Create a dynamic LinkSet class if `link_set_class:` is not provided.
           unless link_set_class
-            link_set_klass = link_set_class || get_links_class
+            link_set_klass = link_set_class || get_link_set_class
             link_set_klass.class_eval do
               # Declare the corresponding lutaml-model attribute
               attribute attribute_name, link_klass, collection: collection
@@ -67,7 +73,7 @@ module Lutaml
         end
 
         # This method obtains the Links class that holds the Link classes
-        def get_links_class
+        def get_link_set_class
           parent_klass_name = name.split('::')[0..-2].join('::')
           child_klass_name = "#{name.split('::').last}LinkSet"
           klass_name = [parent_klass_name, child_klass_name].join('::')
@@ -86,12 +92,14 @@ module Lutaml
           child_klass_name = "#{name.split('::').last}LinkSet"
           klass_name = [parent_klass_name, child_klass_name].join('::')
 
+          Hal.debug_log "Creating link set class #{klass_name}"
+
           # Check if the LinkSet class is already defined, return if so
           return Object.const_get(klass_name) if Object.const_defined?(klass_name)
 
           # Define the LinkSet class dynamically as a normal Lutaml::Model class
-          # since it is not a Resource
-          klass = Class.new(Lutaml::Model::Serializable)
+          # since it is not a Resource.
+          klass = Class.new(Lutaml::Hal::LinkSet)
           parent_klass = !parent_klass_name.empty? ? Object.const_get(parent_klass_name) : Object
           parent_klass.const_set(child_klass_name, klass)
 
@@ -111,8 +119,10 @@ module Lutaml
         # This is a Link class that helps us realize the targeted class
         def create_link_class(realize_class_name)
           parent_klass_name = name.split('::')[0..-2].join('::')
-          child_klass_name = "#{name.split('::').last}Link"
+          child_klass_name = "#{realize_class_name.split('::').last}Link"
           klass_name = [parent_klass_name, child_klass_name].join('::')
+
+          Hal.debug_log "Creating link class #{klass_name} for #{realize_class_name}"
 
           return Object.const_get(klass_name) if Object.const_defined?(klass_name)
 

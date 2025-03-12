@@ -23,7 +23,7 @@ module Lutaml
       def self.inherited(subclass)
         super
 
-        page_links_symbols = %i[self next prev first last]
+        page_links_symbols = %i[self next prev first last up]
         subclass_name = subclass.name
         subclass.class_eval do
           # Define common page links

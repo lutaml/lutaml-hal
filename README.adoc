@@ -71,6 +71,10 @@ A registry for managing HAL resource models and their endpoints. It allows you
 to register models, define their relationships, and fetch resources from the
 API.
 
+`Lutaml::Hal::GlobalRegister`::
+A global registry (Singleton) for managing ModelRegisters and facilitating model
+resolution across different resources. Its usage is optional.
+
 `Lutaml::Hal::Resource`::
 A base class for defining HAL resource models. It includes methods for
 defining attributes, links, and key-value mappings for resources.
@@ -96,6 +100,8 @@ At the data definition phase:
 . Define the API endpoint using the `Client` class.
 . Create a `ModelRegister` to manage the resource models and their
 respective endpoints.
+. (optional) Create a `GlobalRegister` to manage one or more `ModelRegister`
+  instances. It is necessary for automatic Link resolution.
 . Define the resource models using the `Resource` class.
 . Register the models with the `ModelRegister` and define their
 relationships using the `add_endpoint` method.
@@ -145,8 +151,36 @@ require 'lutaml-hal'
 
 # Create a new client with API endpoint
 client = Lutaml::Hal::Client.new(api_url: 'https://api.example.com')
-register = Lutaml::Hal::ModelRegister.new(client: client)
+register = Lutaml::Hal::ModelRegister.new(name: :my_model_register, client: client)
 # Or set client later, `register.client = client`
+----
+
+The `name:` parameter is used to identify the `ModelRegister` instance.
+
+=== Creating a HAL global register
+
+The `GlobalRegister` class is a singleton that manages one or more
+`ModelRegister` instances.
+
+It is optional, but is required for automatic realization of models from Link
+objects. See <<fetching_resource_via_link_realization>> for more details.
+
+[source,ruby]
+----
+require 'lutaml-hal'
+
+# Create a new client with API endpoint
+client = Lutaml::Hal::Client.new(api_url: 'https://api.example.com')
+register = Lutaml::Hal::ModelRegister.new(name: :my_model_register, client: client)
+
+# Register the ModelRegister with the global register
+global_register = Lutaml::Hal::GlobalRegister.instance.register(:my_model_register, register)
+
+# Obtain the global register
+global_register.get(:my_model_register)
+
+# Delete a register mapping
+global_register.delete(:my_model_register)
 ----
 
 
@@ -158,7 +192,7 @@ A HAL resource is defined by creating a subclass of the `Resource` class and
 defining its attributes, links, and key-value mappings.
 
 The `Resource` class is the base class for defining HAL resource models.
-It inherits from `Lutaml::Model::Serialization`, which provides data
+It inherits from `Lutaml::Model::Serializable`, which provides data
 modelling and serialization capabilities.
 
 The declaration of attributes, links, and key-value mappings for a HAL resource
@@ -780,16 +814,34 @@ product_index
 ====
 
 
+[[fetching_resource_via_link_realization]]
 === Fetching a resource via link realization
 
 Given a resource index that contains links to resources, the individual resource
 links can be "realized" as actual model instances through the
-`Link#realize(register)` method which dynamically retrieves the resource.
+`Link#realize(register:)` method which dynamically retrieves the resource.
 
 Given a `Link` object, the `realize` method fetches the resource from the API
 using the provided `register`.
 
-Syntax:
+There are two ways a resource gets realized from a `Link` object:
+
+* If a `Lutaml::Hal::GlobalRegister` is used, and the `Link` object originated
+from a fetch using a `ModelRegister` then the `realize` method has sufficient
+information to automatically fetch the resource from the API using the same
+`register`.
++
+NOTE: This relies on the `Hal::REGISTER_ID_ATTR_NAME` attribute to be set
+in the `ModelRegister` class. This attribute is used to identify the
+resource endpoint ID in the URL.
+
+* If a `GlobalRegister` is not used, even if the Link object originated
+from a fetch using a `ModelRegister`, the `realize` method does not have sufficient
+information to fetch the resource from the API using the same
+`register`. In this case an explicit `register` must be provided to the
+`realize(register: ...)` method.
+
+Syntax for standalone usage:
 
 [source,ruby]
 ----
@@ -813,12 +865,26 @@ NOTE: It is possible to use the `realize` method on a link object using another
 `ModelRegister` instance. This is useful when you want to resolve a link
 using a different API endpoint or a different set of resource models.
 
+Syntax when using a `GlobalRegister`:
+
+[source,ruby]
+----
+resource_index = model_register.fetch(:resource_index)
+resource_index.links.products.first.realize
+# => client.get('/resources/1')
+----
+
 .Dynamically realizing a resource from the collection using links
 [example]
 ====
 [source,ruby]
 ----
+# Without a GlobalRegister
 product_2 = product_index.links.products.last.realize(register)
+
+# With a GlobalRegister
+product_2 = product_index.links.products.last.realize
+
 # => client.get('/products/2')
 # => {
 #   "id": 2,
@@ -842,8 +908,15 @@ product_2
 #                         <ProductLink href: "/products/4", title: "Product 4">,
 #                         <ProductLink href: "/products/6", title: "Product 6">
 #                     ]}>
+
+# Without a GlobalRegister
+product_2_related_1 = product_2.links.related.first.realize(register)
+
+# With a GlobalRegister
+product_2_related_1 = product_2.links.related.first.realize
 ----
 ====
+
 
 === Handling HAL pages / pagination
 
@@ -907,7 +980,12 @@ page_1
 #                next: #<ResourceIndexLink href: "/resources?page=2&items=10">,
 #                last: #<ResourceIndexLink href: "/resources?page=10&items=10">>>
 
+# Without a GlobalRegister
 page_2 = page.links.next.realize(register)
+
+# With a GlobalRegister
+page_2 = page.links.next.realize
+
 # => client.get('/resources?page=2&items=10')
 # => #<ResourceIndex page: 2, pages: 10, limit: 10, total: 100,
 #      links: #<ResourceIndexLinks

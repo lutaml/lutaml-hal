@@ -27,8 +27,8 @@ RSpec.describe Lutaml::Hal::Page do
     )
   end
 
-  let(:register) do
-    Lutaml::Hal::ModelRegister.new(client: client).tap do |r|
+  let(:model_register) do
+    Lutaml::Hal::ModelRegister.new(name: :page_spec, client: client).tap do |r|
       r.add_endpoint(
         id: :pages_index,
         type: :index,
@@ -42,6 +42,17 @@ RSpec.describe Lutaml::Hal::Page do
         model: PageSpec::PageModel
       )
     end
+  end
+
+  let(:global_register) do
+    Lutaml::Hal::GlobalRegister.instance.tap do |r|
+      r.delete(:page_spec)
+      r.register(:page_spec, model_register)
+    end
+  end
+
+  let(:register) do
+    global_register.get(:page_spec)
   end
 
   let(:response_page_1) do

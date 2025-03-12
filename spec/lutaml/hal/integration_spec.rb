@@ -62,8 +62,8 @@ RSpec.describe 'Lutaml::Hal::IntegrationSpec' do
     )
   end
 
-  let(:register) do
-    Lutaml::Hal::ModelRegister.new(client: client).tap do |r|
+  let(:model_register) do
+    Lutaml::Hal::ModelRegister.new(name: :integration_spec, client: client).tap do |r|
       r.add_endpoint(
         id: :spec_index,
         type: :index,
@@ -77,6 +77,17 @@ RSpec.describe 'Lutaml::Hal::IntegrationSpec' do
         model: IntegrationSpec::Specification
       )
     end
+  end
+
+  let(:global_register) do
+    Lutaml::Hal::GlobalRegister.instance.tap do |r|
+      r.delete(:integration_spec)
+      r.register(:integration_spec, model_register)
+    end
+  end
+
+  let(:register) do
+    global_register.get(:integration_spec)
   end
 
   let(:index_response) do
@@ -169,7 +180,12 @@ RSpec.describe 'Lutaml::Hal::IntegrationSpec' do
       expect(index.links.specifications).to all(be_a(Lutaml::Hal::Link))
 
       first_specification_link = index.links.specifications.first
-      first_specification = first_specification_link.realize(register)
+      fs_implied = first_specification_link.realize
+      first_specification = first_specification_link.realize(register: register)
+
+      # Verify the first specification realization
+      expect(fs_implied).to be_eql(first_specification)
+
       expect(first_specification.shortname).to be_eql('png-2')
       expect(first_specification.editor_draft).to be_eql('https://w3c.github.io/png/')
       expect(first_specification.description).to include('This document describes PNG (Portable Network Graphics)')
