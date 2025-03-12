@@ -86,26 +86,58 @@ defining pagination attributes, such as `page`, `pages`, `limit`, and
 `total`, as well as methods for accessing linked resources within a page.
 
 
-== Usage
+== Usage overview
 
-=== General
+In order to interact with a HAL API using `lutaml-hal`, there are two
+stages of usage: data definition and runtime.
 
-In order to interact with a HAL API, the following steps are required:
+At the data definition phase:
 
-. Create a `Client` that points to the API endpoint.
+. Define the API endpoint using the `Client` class.
 . Create a `ModelRegister` to manage the resource models and their
 respective endpoints.
 . Define the resource models using the `Resource` class.
-. Register the models with the `ModelRegister`.
-. Fetch resources from the API using the `ModelRegister`.
+. Register the models with the `ModelRegister` and define their
+relationships using the `add_endpoint` method.
+
+Once data definition is present, the following operations can be performed at
+runtime:
+
+. Fetch resources from the API using the `ModelRegister` and `Link#realize` methods.
+
 .. Once the resources are fetched, you can access their attributes and links
 and navigate through the resource graph.
+
 . Pagination, such as on "index" type pages, can be handled by subclassing the `Page` class.
-The `Page` class itself is also implemented as a `Resource`, so you can
++
+NOTE: The `Page` class itself is also implemented as a `Resource`, so you can
 use the same methods to access the page's attributes and links.
 
 
+== Usage: Data definition
+
+=== General
+
+HAL resources need to be defined as models to allow data access and serialization.
+
+The following steps are required:
+
+. Define HAL resource models.
+. Define the base API URL using the `Client` class.
+. Create a `ModelRegister` to manage the resource models.
+. Define the resource models' respective endpoints on the base API URL.
+
+
 === Creating a HAL model register
+
+The `ModelRegister` class is used to manage the resource models and their
+respective endpoints on the base API URL.
+
+It relies on the `Client` class to perform HTTP requests to the API. The base
+API URL is defined at the `Client` object.
+
+NOTE: The base API URL is used for all requests made by the `Client` class,
+including the requests made by the `ModelRegister` class.
 
 [source,ruby]
 ----
@@ -115,67 +147,34 @@ require 'lutaml-hal'
 client = Lutaml::Hal::Client.new(api_url: 'https://api.example.com')
 register = Lutaml::Hal::ModelRegister.new(client: client)
 # Or set client later, `register.client = client`
-
-register.add_endpoint(
-  id: :product_index,
-  type: :index,
-  url: '/products',
-  model: Product
-)
-register.add_endpoint(
-  id: :product_resource,
-  type: :resource,
-  url: '/products/{id}',
-  model: Product
-)
-
-register.fetch(:product_index)
-# => client.get('/products')
-
-# => {
-# "page": 1,
-# "pages": 10,
-# "limit": 10,
-# "total": 45,
-# "_links": {
-#   "self": { "href": "/products/1" },
-#   "next": { "href": "/products/2" },
-#   "last": { "href": "/products/5" },
-#   "products": [
-#     { "id": 1, "name": "Product 1", "price": 10.0 },
-#     { "id": 2, "name": "Product 2", "price": 15.0 }
-#   ]
-# }
-
-product_1 = register.fetch(:product_resource, id: 1)
-# => client.get('/products/1')
-
-# => {
-# "id": 1,
-# "name": "Product 1",
-# "price": 10.0,
-# "_links": {
-#   "self": { "href": "/products/1" },
-#   "category": { "href": "/categories/1", "title": "Category 1" },
-#   "related": [
-#      { "href": "/products/3", "title": "Product 3" },
-#      { "href": "/products/5", "title": "Product 5" }
-#   ]
-# }
-# }
-
-product_1
-# => #<Product id: 1, name: "Product 1", price: 10.0, links:
-#      #<ProductLinks self: <ProductLink href: "/products/1">,
-#                     category: <ProductLink href: "/categories/1", title: "Category 1">,
-#                     related: [
-#                         <ProductLink href: "/products/3", title: "Product 3">,
-#                         <ProductLink href: "/products/5", title: "Product 5">
-#                     ]}>
 ----
 
-=== Defining resource models
 
+=== Defining HAL resource models
+
+==== General
+
+A HAL resource is defined by creating a subclass of the `Resource` class and
+defining its attributes, links, and key-value mappings.
+
+The `Resource` class is the base class for defining HAL resource models.
+It inherits from `Lutaml::Model::Serialization`, which provides data
+modelling and serialization capabilities.
+
+The declaration of attributes, links, and key-value mappings for a HAL resource
+is performed using the `attribute`, `hal_link`, and `key_value` methods.
+
+There are 3 levels of data modeling in a HAL resource, all of which are necessary
+for the full usage of a HAL resource:
+
+* Resource attributes
+* Serialization mappings
+* HAL Links
+
+
+.Integrated example of a resource model
+[example]
+====
 [source,ruby]
 ----
 module MyApi
@@ -193,47 +192,527 @@ module MyApi
       map 'price', to: :price
     end
   end
-
-  # Register the model with the registry
-  Lutaml::Hal::ModelRegister.register(Product, '/products/{id}')
 end
 ----
+====
 
-=== Registering endpoints
 
-=== Fetching Resources
+==== Resource attributes
+
+A resource attribute is a direct property of the HAL resource.
+
+These attributes typically hold values of simple data types, and are directly
+serialized into JSON.
+
+These attributes are declared using the `attribute` method from `lutaml-model`.
+
+[example]
+====
+A HAL resource of class `Product` can have attributes `id`, `name`, and `price`.
+====
+
+Please refer to syntax as described in the
+https://github.com/lutaml/lutaml-model[`lutaml-model`] documentation.
+
+.Example of a resource model with attributes
+[example]
+====
+[source,ruby]
+----
+module MyApi
+  class Product < Lutaml::Hal::Resource
+    attribute :id, :string
+    attribute :name, :string
+    attribute :price, :float
+    # ...
+  end
+end
+----
+====
+
+==== Serialization mapping of resource attributes
+
+A serialization mapping defines rules to serialize a HAL resource to and from a
+serialization format. In HAL, the serialization format is JSON, but other formats
+can also be supported.
+
+The mapping between the HAL model attributes and their corresponding JSON
+serialization is performed using the `key_value do` or `json do` blocks from
+`lutaml-model`. The mapping of the contents of `_links` is automatically
+performed using `hal_link`.
+
+[example]
+====
+A HAL resource of class `Product` with attributes `id`, `name`, and `price` will
+need to declare a `key_value` block to map the attributes to their corresponding
+JSON keys, namely, `"id"`, `"name"`, and `"price"`.
+====
+
+Please refer to syntax as described in the
+https://github.com/lutaml/lutaml-model[`lutaml-model`] documentation.
+
+.Example of a resource model with serialization mapping
+[example]
+====
+[source,ruby]
+----
+module MyApi
+  class Product < Lutaml::Hal::Resource
+    attribute :id, :string
+    attribute :name, :string
+    attribute :price, :float
+
+    key_value do
+      map 'id', to: :id
+      map 'name', to: :name
+      map 'price', to: :price
+    end
+  end
+end
+----
+====
+
+
+
+==== HAL Links
+
+A HAL resource has links to other resources, typically serialized in
+the `__links` section of the JSON response.
+
+[example]
+====
+A HAL resource of class `Product` can have links `self` (which is a
+self-referential identifier link) and `category`.
+====
+
+HAL links need to be defined in the resource model to allow the resolution of
+the links to their target resources.
+
+These links are declared using the `hal_link` method provided by `lutaml-hal`.
+
+Syntax:
 
 [source,ruby]
 ----
-# Assume that the client is already created and registered at
-# the ModelRegister
-# Get a resource
-product = client.get('products/123')
-product_resource = MyApi::Product.from_json(product.to_json)
-
-# Follow a link
-category = product_resource.category.realize(register)
+hal_link :link_name, key: 'link_key', realize_class: 'TargetResourceClass'
 ----
 
-=== Working with Collections
+`link_name`:: The name of the link, which will be used to access the link in the
+resource object.
+`link_key`:: The key of the link in the JSON response. This is the name of the
+link as it appears in the `_links` section of the HAL resource.
+`TargetResourceClass`:: The class of the target resource that the link points to. This
+is used to resolve the link to the associated resource.
+
+The `_links` section is modeled as a dynamically created link set class, named
+after the resource's class name (with an appended `Links` string), which in turn
+contains the defined links to other resources. The link set class is inherited
+from `Lutaml::Model::Serializable`.
+
+[example]
+====
+A HAL resource of class `Product` will have a link set of class `ProductLinks`
+which contains the `self` and `category` links as its attributes.
+====
+
+Each link object of the link set is provided as a `Lutaml::Hal::Link` object.
+
+[example]
+====
+For an instance of `Product`, the library will provide:
+
+* the link set (serialized in HAL as JSON `_links`) in the class `ProductLinks`.
+
+* the link set contains the `self` and the `category` links of class `Lutaml::Hal::Link`.
+
+As a result:
+
+* calling `product.links.self` will return an instance of `Link`.
+
+* calling `product.links.self.realize(register)` will dynamically fetch and
+return an instance of `Product`.
+====
+
+
+
+=== Registering resource models and endpoints
+
+The `ModelRegister` allows you to register resource models and their endpoints.
+
+You can define endpoints for collections (index) and individual resources
+(resource) using the `add_endpoint` method.
+
+The `add_endpoint` method takes the following parameters:
+
+`id`:: A unique identifier for the endpoint.
+`type`:: The type of endpoint, which can be `index` or `resource`.
+`url`:: The URL of the endpoint, which can include path parameters.
+`model`:: The class of the resource that will be fetched from the API.
+The class must inherit from `Lutaml::Hal::Resource`.
+
+In the `url`, you can use interpolation parameters, which will be replaced with
+the actual values when fetching the resource. The interpolation parameters are
+defined in the `url` string using curly braces `{}`.
+
+The `add_endpoint` method will automatically handle the URL resolution and fetch
+the resource from the API.
+
+When the `ModelRegister` fetches a resource using the `realize` method, it will
+match the resource URL against registered paths in order to find the
+appropriate model class to use for deserialization and resolution.
+
+Syntax:
 
 [source,ruby]
 ----
-class ProductPage < Lutaml::Hal::Page
-  # Define the relationship between page and items
-end
-
-response = client.get('/products')
-products = ProductPage.from_json(response.to_json)
-
-# Access pagination info
-puts "Page #{products.page} of #{products.pages}, total: #{products.total}"
-
-# Access linked items
-products.links.products.each do |product|
-  puts "#{product.name}: $#{product.price}"
-end
+register.add_endpoint( <1>
+  id: :model_index, <2>
+  type: :index, <3>
+  url: '/url_supporting_interpolation/{param}', <4>
+  model: ModelClass <5>
+)
 ----
+<1> The `add_endpoint` method is used to register an endpoint for a model.
+<2> The `id` is a unique identifier for the endpoint, which is required to
+    fetch the resource later.
+<3> The `type` specifies the type of endpoint, which can be `index` or
+    `resource`. The `index` type is used for collections, while the
+    `resource` type is used for individual resources.
+<4> The `url` is the URL of the endpoint, which can include path
+    parameters. The URL can also include interpolation parameters, which
+    will be replaced with the actual values when fetching the resource.
+<5> The `model` is the class of the resource that will be fetched from
+    the API. The class must inherit from `Lutaml::Hal::Resource`.
+
+.Example of registering the Product class to both index and resource endpoints
+[example]
+====
+[source,ruby]
+----
+register.add_endpoint(
+  id: :product_index,
+  type: :index,
+  url: '/products',
+  model: Product
+)
+
+register.add_endpoint(
+  id: :product_resource,
+  type: :resource,
+  url: '/products/{id}',
+  model: Product
+)
+----
+====
+
+
+== Usage: Runtime
+
+=== General
+
+NOTE: The `lutaml-hal` library currently only supports synchronous data fetching.
+Asynchronous data fetching will be supported in the future.
+
+NOTE: The `lutaml-hal` library currently only supports data fetching requests
+(GET) today. Additional features may be provided in the future.
+
+Once the data definition is complete, you can use the `ModelRegister` to
+fetch and interact with resources from the API.
+
+=== Fetching a resource
+
+The `ModelRegister` allows you to fetch resources from the API using the `fetch`
+method.
+
+NOTE: The endpoint of the resource must be already defined through the
+`add_endpoint` method.
+
+The `fetch` method will automatically handle the URL resolution and fetch the
+resource from the API.
+
+Syntax:
+
+[source,ruby]
+----
+register.fetch(:resource_endpoint_id, {parameters})
+----
+
+Where,
+
+`resource_endpoint_id`:: The ID of the endpoint registered in the
+`ModelRegister`.
+`parameters`:: A hash of parameters to be passed to the API. The parameters
+are used to replace the interpolation parameters in the URL.
+`register`:: The instance of `ModelRegister`.
+
+
+.Fetch a resource directly from the API
+[example]
+====
+[source,ruby]
+----
+product_1 = register.fetch(:product_resource, id: 1)
+# => client.get('/products/1')
+
+# => {
+#   "id": 1,
+#   "name": "Product 1",
+#   "price": 10.0,
+#   "_links": {
+#     "self": { "href": "/products/1" },
+#     "category": { "href": "/categories/1", "title": "Category 1" },
+#     "related": [
+#        { "href": "/products/3", "title": "Product 3" },
+#        { "href": "/products/5", "title": "Product 5" }
+#     ]
+#   }
+# }
+
+product_1
+# => #<Product id: 1, name: "Product 1", price: 10.0, links:
+#      #<ProductLinks self: <ProductLink href: "/products/1">,
+#                     category: <ProductLink href: "/categories/1", title: "Category 1">,
+#                     related: [
+#                         <ProductLink href: "/products/3", title: "Product 3">,
+#                         <ProductLink href: "/products/5", title: "Product 5">
+#                     ]}>
+----
+====
+
+
+
+=== Fetching a resource index
+
+In HAL, collections are provided via the `_links` or the `_embedded` sections of
+the response.
+
+NOTE: The `_embedded` section is not yet supported by the `Lutaml::Hal` library.
+
+The `ModelRegister` allows you to define endpoints for collections and fetch
+them using the `fetch` method.
+
+The `fetch` method will automatically handle the URL resolution and fetch the
+resource index from the API.
+
+// The `Page` class is used to handle pagination and resource
+// resolution for collections.
+
+Syntax:
+
+[source,ruby]
+----
+register.fetch(:index_endpoint_id)
+----
+
+Where,
+
+`index_endpoint_id`:: The ID of the endpoint registered in the `ModelRegister`.
+`register`:: The instance of `ModelRegister`.
+
+
+.Fetch a collection of resources from the API
+[example]
+====
+[source,ruby]
+----
+product_index = register.fetch(:product_index)
+# => client.get('/products')
+
+# => {
+# "page": 1,
+# "pages": 10,
+# "limit": 10,
+# "total": 45,
+# "_links": {
+#   "self": { "href": "/products/1" },
+#   "next": { "href": "/products/2" },
+#   "last": { "href": "/products/5" },
+#   "products": [
+#     { "href": "/products/1", "title": "Product 1" },
+#     { "href": "/products/2", "title": "Product 2" }
+#   ]
+# }
+
+product_index
+# => #<ProductPage page: 1, pages: 10, limit: 10, total: 45,
+#      links: #<ProductLinks self: <ProductLink href: "/products/1">,
+#                     next: <ProductLink href: "/products/2">,
+#                     last: <ProductLink href: "/products/5">,
+#                     products: <ProductLinks
+#                         <ProductLink href: "/products/1", title: "Product 1">,
+#                         <ProductLink href: "/products/2", title: "Product 2">
+#                     ]>>
+----
+====
+
+
+=== Fetching a resource via link realization
+
+Given a resource index that contains links to resources, the individual resource
+links can be "realized" as actual model instances through the
+`Link#realize(register)` method which dynamically retrieves the resource.
+
+Given a `Link` object, the `realize` method fetches the resource from the API
+using the provided `register`.
+
+Syntax:
+
+[source,ruby]
+----
+Lutaml::Model::Link.new(
+  href: 'resource_endpoint_href',
+  # ... other attributes
+).realize(register)
+----
+
+Where,
+
+`resource_endpoint_href`:: The href of the resource endpoint. This is the URL of the
+resource as it appears in the `_links` section of the HAL resource.
+`register`:: The instance of `ModelRegister`.
+
+The `realize` method will automatically handle the URL resolution and fetch
+the resource from the API, and return an instance of the resource class
+defined in the `ModelRegister` (through the endpoint definition of `realize_class`).
+
+NOTE: It is possible to use the `realize` method on a link object using another
+`ModelRegister` instance. This is useful when you want to resolve a link
+using a different API endpoint or a different set of resource models.
+
+.Dynamically realizing a resource from the collection using links
+[example]
+====
+[source,ruby]
+----
+product_2 = product_index.links.products.last.realize(register)
+# => client.get('/products/2')
+# => {
+#   "id": 2,
+#   "name": "Product 2",
+#   "price": 20.0,
+#   "_links": {
+#     "self": { "href": "/products/2" },
+#     "category": { "href": "/categories/2", "title": "Category 2" },
+#     "related": [
+#        { "href": "/products/4", "title": "Product 4" },
+#        { "href": "/products/6", "title": "Product 6" }
+#     ]
+#   }
+# }
+
+product_2
+# => #<Product id: 2, name: "Product 2", price: 20.0, links:
+#      #<ProductLinks self: <ProductLink href: "/products/2">,
+#                     category: <ProductLink href: "/categories/2", title: "Category 2">,
+#                     related: [
+#                         <ProductLink href: "/products/4", title: "Product 4">,
+#                         <ProductLink href: "/products/6", title: "Product 6">
+#                     ]}>
+----
+====
+
+=== Pagination
+
+HAL index APIs often support pagination, which allows clients to retrieve a
+limited number of resources at a time.
+
+The `Lutaml::Hal::Page` class is used to handle pagination in HAL APIs. The
+`Page` class itself is implemented as a `Resource`, so you can use the same
+methods to access the page's attributes and links.
+
+The `Page` class by default supports the following attributes:
+
+`page`:: The current page number.
+`pages`:: The total number of pages.
+`limit`:: The number of resources per page.
+`total`:: The total number of resources.
+
+Syntax:
+
+[source,ruby]
+----
+class MyPage < Lutaml::Hal::Page
+  # These are typical links given for page objects
+  hal_link :self, key: 'self', realize_class: 'MyPage'
+  hal_link :prev, key: 'prev', realize_class: 'MyPage'
+  hal_link :next, key: 'next', realize_class: 'MyPage'
+  hal_link :first, key: 'first', realize_class: 'MyPage'
+  hal_link :last, key: 'last', realize_class: 'MyPage'
+end
+
+register.add_endpoint(
+  id: :my_pages,
+  type: :index,
+  url: '/my_pages',
+  model: MyPage
+)
+----
+
+Where,
+
+`MyPage`:: The class of the page that will be fetched from the API. The class
+must inherit from `Lutaml::Hal::Page`.
+`register`:: The instance of `ModelRegister`.
+`id`:: The ID of the pagination endpoint to be registered in the `ModelRegister`.
+`url`:: The URL of the pagination endpoint.
+`model`:: The class of the page that will be fetched from the API.
+
+
+.Usage example of the Page class
+[example]
+====
+Declaration:
+
+[source,ruby]
+----
+class MyPage < Lutaml::Hal::Page
+  hal_link :self, key: 'self', realize_class: 'MyPage'
+  hal_link :prev, key: 'prev', realize_class: 'MyPage'
+  hal_link :next, key: 'next', realize_class: 'MyPage'
+  hal_link :first, key: 'first', realize_class: 'MyPage'
+  hal_link :last, key: 'last', realize_class: 'MyPage'
+end
+
+register.add_endpoint(
+  id: :my_pages,
+  type: :index,
+  url: '/my_pages',
+  model: MyPage
+)
+----
+
+Usage:
+
+[source,ruby]
+----
+page_1 = register.fetch(:my_pages)
+# => client.get('/my_pages')
+# => {
+#   "page": 1,
+#   "pages": 10,
+#   "limit": 10,
+#   "total": 100,
+#   "_links": {
+#     "self": { "href": "/my_pages" },
+#     "next": { "href": "/my_pages/2" },
+#     "last": { "href": "/my_pages/9" }
+#   }
+# }
+page_1
+# => #<MyPage page: 1, pages: 10, limit: 10, total: 100,
+#      links: #<MyPageLinks self: <MyPageLink href: "/my_pages">,
+#                     next: <MyPageLink href: "/my_pages/2">,
+#                     last: <MyPageLink href: "/my_pages/9">>>
+page_2 = page.links.next.realize(register)
+# => client.get('/my_pages/2')
+# => #<MyPage page: 2, pages: 10, limit: 10, total: 100,
+#      links: #<MyPageLinks self: <MyPageLink href: "/my_pages/2">,
+#                     prev: <MyPageLink href: "/my_pages/1">,
+#                     next: <MyPageLink href: "/my_pages/3">,
+#                     first: <MyPageLink href: "/my_pages/1">,
+#                     last: <MyPageLink href: "/my_pages/9">>>
+----
+====
 
 
 == License and Copyright
