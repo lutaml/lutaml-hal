@@ -8,5 +8,6 @@ module Lutaml
     class BadRequestError < Error; end
     class ServerError < Error; end
     class LinkResolutionError < Error; end
+    class ParsingError < Error; end
   end
 end
