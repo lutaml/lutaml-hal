@@ -4,16 +4,6 @@ require_relative '../../spec_helper'
 
 module PageSpec
   class PageModel < Lutaml::Hal::Page
-    attribute :page, :integer
-    attribute :limit, :integer
-    attribute :pages, :integer
-    attribute :total, :integer
-
-    hal_link :self, key: 'self', realize_class: 'PageSpec::PageModel'
-    hal_link :next, key: 'next', realize_class: 'PageSpec::PageModel'
-    hal_link :prev, key: 'prev', realize_class: 'PageSpec::PageModel'
-    hal_link :first, key: 'first', realize_class: 'PageSpec::PageModel'
-    hal_link :last, key: 'last', realize_class: 'PageSpec::PageModel'
   end
 end
 

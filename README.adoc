@@ -580,6 +580,69 @@ register.add_endpoint(
 ====
 
 
+[[defining_hal_page_models]]
+=== Defining HAL page models
+
+HAL index APIs often support pagination, which allows clients to retrieve a
+limited number of resources at a time.
+
+The `Lutaml::Hal::Page` class is used to handle pagination in HAL APIs. It is a
+subclass of `Resource`, and provides additional attributes and methods for
+handling pagination information
+
+The `Page` class by default supports the following attributes:
+
+`page`:: The current page number.
+`pages`:: The total number of pages.
+`limit`:: The number of resources per page.
+`total`:: The total number of resources.
+
+The way to use the `Page` class is through inheritance from it, where the
+class will automatically create the necessary links for typical page objects.
+
+The typical links of a page object are:
+
+`self`:: A link to the current page.
+`prev`:: A link to the previous page.
+`next`:: A link to the next page.
+`first`:: A link to the first page.
+`last`:: A link to the last page.
+
+The "realize class" of these links are the same as the inherited page
+object, ensuring consistency in the pagination model.
+
+Syntax:
+
+[source,ruby]
+----
+class ProductIndex < Lutaml::Hal::Page
+  # No attributes necessary
+end
+
+register.add_endpoint(
+  id: :product_index,
+  type: :index,
+  url: '/products',
+  model: ProductIndex
+)
+
+page_1 = register.fetch(:product_index)  # Updated to use the correct endpoint id
+page_2_link = page_1.links.next
+# => <#ProductIndexLink href: "/products/2", title: "Next Page">
+----
+
+Where,
+
+`ProductIndex`:: The class of the page that will be fetched from the API. The class
+must inherit from `Lutaml::Hal::Page`.
+`register`:: The instance of `ModelRegister`.
+`id`:: The ID of the pagination endpoint to be registered in the `ModelRegister`.
+`url`:: The URL of the pagination endpoint.
+`model`:: The class of the page that will be fetched from the API.
+
+
+
+
 == Usage: Runtime
 
 === General
@@ -667,9 +730,6 @@ them using the `fetch` method.
 
 The `fetch` method will automatically handle the URL resolution and fetch the
 resource index from the API.
-
-// The `Page` class is used to handle pagination and resource
-// resolution for collections.
 
 Syntax:
 
@@ -785,51 +845,13 @@ product_2
 ----
 ====
 
-=== Pagination
+=== Handling HAL pages / pagination
 
-HAL index APIs often support pagination, which allows clients to retrieve a
-limited number of resources at a time.
+The `Lutaml::Hal::Page` class is used to handle pagination in HAL APIs.
 
-The `Lutaml::Hal::Page` class is used to handle pagination in HAL APIs. The
-`Page` class itself is implemented as a `Resource`, so you can use the same
-methods to access the page's attributes and links.
-
-The `Page` class by default supports the following attributes:
-
-`page`:: The current page number.
-`pages`:: The total number of pages.
-`limit`:: The number of resources per page.
-`total`:: The total number of resources.
-
-Syntax:
-
-[source,ruby]
-----
-class MyPage < Lutaml::Hal::Page
-  # These are typical links given for page objects
-  hal_link :self, key: 'self', realize_class: 'MyPage'
-  hal_link :prev, key: 'prev', realize_class: 'MyPage'
-  hal_link :next, key: 'next', realize_class: 'MyPage'
-  hal_link :first, key: 'first', realize_class: 'MyPage'
-  hal_link :last, key: 'last', realize_class: 'MyPage'
-end
-
-register.add_endpoint(
-  id: :my_pages,
-  type: :index,
-  url: '/my_pages',
-  model: MyPage
-)
-----
-
-Where,
-
-`MyPage`:: The class of the page that will be fetched from the API. The class
-must inherit from `Lutaml::Hal::Page`.
-`register`:: The instance of `ModelRegister`.
-`id`:: The ID of the pagination endpoint to be registered in the `ModelRegister`.
-`url`:: The URL of the pagination endpoint.
-`model`:: The class of the page that will be fetched from the API.
+As described in <<defining_hal_page_models>>, subclassing the `Page` class
+provides pagination capabilities, including the management of links to navigate
+through pages of resources.
 
 
 .Usage example of the Page class
@@ -839,19 +861,15 @@ Declaration:
 
 [source,ruby]
 ----
-class MyPage < Lutaml::Hal::Page
-  hal_link :self, key: 'self', realize_class: 'MyPage'
-  hal_link :prev, key: 'prev', realize_class: 'MyPage'
-  hal_link :next, key: 'next', realize_class: 'MyPage'
-  hal_link :first, key: 'first', realize_class: 'MyPage'
-  hal_link :last, key: 'last', realize_class: 'MyPage'
+class ResourceIndex < Lutaml::Hal::Page
+  # No attribute definition necessary
 end
 
 register.add_endpoint(
-  id: :my_pages,
+  id: :resource_index,
   type: :index,
-  url: '/my_pages',
-  model: MyPage
+  url: '/resources',
+  model: ResourceIndex
 )
 ----
 
@@ -859,32 +877,46 @@ Usage:
 
 [source,ruby]
 ----
-page_1 = register.fetch(:my_pages)
-# => client.get('/my_pages')
+page_1 = register.fetch(:resource_index)
+# => client.get('/resources')
 # => {
 #   "page": 1,
 #   "pages": 10,
 #   "limit": 10,
 #   "total": 100,
 #   "_links": {
-#     "self": { "href": "/my_pages" },
-#     "next": { "href": "/my_pages/2" },
-#     "last": { "href": "/my_pages/9" }
+#     "self": {
+#       "href": "https://api.example.com/resources?page=1&items=10"
+#     },
+#     "first": {
+#       "href": "https://api.example.com/resources?page=1&items=10"
+#     },
+#     "last": {
+#       "href": "https://api.example.com/resources?page=10&items=10"
+#     },
+#     "next": {
+#       "href": "https://api.example.com/resources?page=2&items=10"
+#     }
 #   }
 # }
+
 page_1
-# => #<MyPage page: 1, pages: 10, limit: 10, total: 100,
-#      links: #<MyPageLinks self: <MyPageLink href: "/my_pages">,
-#                     next: <MyPageLink href: "/my_pages/2">,
-#                     last: <MyPageLink href: "/my_pages/9">>>
+# => #<ResourceIndex page: 1, pages: 10, limit: 10, total: 100,
+#      links: #<ResourceIndexLinks
+#                self: #<ResourceIndexLink href: "/resources?page=1&items=10">,
+#                next: #<ResourceIndexLink href: "/resources?page=2&items=10">,
+#                last: #<ResourceIndexLink href: "/resources?page=10&items=10">>>
+
 page_2 = page.links.next.realize(register)
-# => client.get('/my_pages/2')
-# => #<MyPage page: 2, pages: 10, limit: 10, total: 100,
-#      links: #<MyPageLinks self: <MyPageLink href: "/my_pages/2">,
-#                     prev: <MyPageLink href: "/my_pages/1">,
-#                     next: <MyPageLink href: "/my_pages/3">,
-#                     first: <MyPageLink href: "/my_pages/1">,
-#                     last: <MyPageLink href: "/my_pages/9">>>
+# => client.get('/resources?page=2&items=10')
+# => #<ResourceIndex page: 2, pages: 10, limit: 10, total: 100,
+#      links: #<ResourceIndexLinks
+#                self: #<ResourceIndexLink href: "/resources?page=2&items=10">,
+#                prev: #<ResourceIndexLink href: "/resources?page=1&items=10">,
+#                next: #<ResourceIndexLink href: "/resources?page=3&items=10">,
+#                first: #<ResourceIndexLink href: "/resources?page=1&items=10">,
+#                last: #<ResourceIndexLink href: "/resources?page=10&items=10">>>,
+#                prev: #<ResourceIndexLink href: "/resources?page=1&items=10">>>
 ----
 ====
 

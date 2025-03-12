@@ -70,7 +70,7 @@ module Lutaml
         def get_links_class
           parent_klass_name = name.split('::')[0..-2].join('::')
           child_klass_name = "#{name.split('::').last}LinkSet"
-          klass_name = "#{parent_klass_name}::#{child_klass_name}"
+          klass_name = [parent_klass_name, child_klass_name].join('::')
 
           raise unless Object.const_defined?(klass_name)
 
@@ -84,7 +84,7 @@ module Lutaml
         def create_link_set_class
           parent_klass_name = name.split('::')[0..-2].join('::')
           child_klass_name = "#{name.split('::').last}LinkSet"
-          klass_name = "#{parent_klass_name}::#{child_klass_name}"
+          klass_name = [parent_klass_name, child_klass_name].join('::')
 
           # Check if the LinkSet class is already defined, return if so
           return Object.const_get(klass_name) if Object.const_defined?(klass_name)
@@ -92,9 +92,8 @@ module Lutaml
           # Define the LinkSet class dynamically as a normal Lutaml::Model class
           # since it is not a Resource
           klass = Class.new(Lutaml::Model::Serializable)
-          Object.const_get(parent_klass_name).tap do |parent_klass|
-            parent_klass.const_set(child_klass_name, klass)
-          end
+          parent_klass = !parent_klass_name.empty? ? Object.const_get(parent_klass_name) : Object
+          parent_klass.const_set(child_klass_name, klass)
 
           # Define the LinkSet class with mapping inside the current class
           class_eval do
@@ -113,7 +112,7 @@ module Lutaml
         def create_link_class(realize_class_name)
           parent_klass_name = name.split('::')[0..-2].join('::')
           child_klass_name = "#{name.split('::').last}Link"
-          klass_name = "#{parent_klass_name}::#{child_klass_name}"
+          klass_name = [parent_klass_name, child_klass_name].join('::')
 
           return Object.const_get(klass_name) if Object.const_defined?(klass_name)
 
@@ -122,9 +121,9 @@ module Lutaml
             # Define the link class with the specified key and class
             attribute :type, :string, default: realize_class_name
           end
-          Object.const_get(parent_klass_name).tap do |parent_klass|
-            parent_klass.const_set(child_klass_name, klass)
-          end
+
+          parent_klass = !parent_klass_name.empty? ? Object.const_get(parent_klass_name) : Object
+          parent_klass.const_set(child_klass_name, klass)
 
           klass
         end
