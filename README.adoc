@@ -277,7 +277,7 @@ end
 ==== HAL Links
 
 A HAL resource has links to other resources, typically serialized in
-the `__links` section of the JSON response.
+the `_links` section of the JSON response.
 
 [example]
 ====
@@ -294,32 +294,86 @@ Syntax:
 
 [source,ruby]
 ----
-hal_link :link_name, key: 'link_key', realize_class: 'TargetResourceClass'
+hal_link :link_name,
+  key: 'link_key',
+  realize_class: 'TargetResourceClass',
+  link_class: 'LinkClass',
+  link_set_class: 'LinkSetClass'
 ----
 
-`link_name`:: The name of the link, which will be used to access the link in the
-resource object.
-`link_key`:: The key of the link in the JSON response. This is the name of the
-link as it appears in the `_links` section of the HAL resource.
-`TargetResourceClass`:: The class of the target resource that the link points to. This
-is used to resolve the link to the associated resource.
+`:link_name`:: The name of the link, which will be used to access the link in
+the resource object.
+
+`key: 'link_key'`:: The key of the link in the JSON response. This is the name
+of the link as it appears in the `_links` section of the HAL resource.
+
+`realize_class: 'TargetResourceClass'`:: The class of the target resource that
+the link points to. This is used to resolve the link to the associated resource.
+
+`link_class: 'LinkClass'`:: (optional) The class of the link that defines
+specific behavior or attributes for the link object itself. This is dynamically
+created and is inherited from `Lutaml::Hal::Link` if not provided.
+
+`link_set_class: 'LinkSetClass'`:: (optional) The class of the link set object
+that contains the links. This is dynamically created and is inherited from
+`Lutaml::Model::Serializable` if not provided.
+
 
 The `_links` section is modeled as a dynamically created link set class, named
-after the resource's class name (with an appended `Links` string), which in turn
+after the resource's class name (with an appended `LinkSet` string), which in turn
 contains the defined links to other resources. The link set class is inherited
 from `Lutaml::Model::Serializable`.
 
 [example]
 ====
-A HAL resource of class `Product` will have a link set of class `ProductLinks`
+A HAL resource of class `Product` may have a link set of class `ProductLinkSet`
 which contains the `self` and `category` links as its attributes.
 ====
 
-Each link object of the link set is provided as a `Lutaml::Hal::Link` object.
+
+Each link object of the link set is provided as a `Link` object that is
+dynamically created for the type of resolved resource. The name of the link
+class is the same as the resource class name with an appended `Link` string.
+This Link class is inherited from `Lutaml::Hal::Link`.
 
 [example]
 ====
-For an instance of `Product`, the library will provide:
+A HAL resource of class `Product` with a link set that contains the `self`
+(points to a `Product`) and `category` (points to a `Category`) links will
+have:
+
+* a link set of class `ProductLinks` which contains:
+** a `self` attribute that is an instance of `ProductLink`
+** a `category` attribute that is an instance of `CategoryLink`
+====
+
+
+.Integrated example of a HAL resource model using auto-generated LinkSet and Link classes
+[example]
+====
+For an instance of `Product`:
+
+[source,ruby]
+----
+module MyApi
+  class Product < Lutaml::Hal::Resource
+    attribute :id, :string
+    attribute :name, :string
+    attribute :price, :float
+
+    hal_link :self, key: 'self', realize_class: 'Product'
+    hal_link :category, key: 'category', realize_class: 'Category'
+
+    key_value do
+      map 'id', to: :id
+      map 'name', to: :name
+      map 'price', to: :price
+    end
+  end
+end
+----
+
+The library will provide:
 
 * the link set (serialized in HAL as JSON `_links`) in the class `ProductLinks`.
 
@@ -327,11 +381,131 @@ For an instance of `Product`, the library will provide:
 
 As a result:
 
-* calling `product.links.self` will return an instance of `Link`.
+* calling `product.links.self` will return an instance of `ProductLink`.
 
 * calling `product.links.self.realize(register)` will dynamically fetch and
 return an instance of `Product`.
 ====
+
+
+
+==== Custom link set class
+
+When a custom link set class (via `link_set_class:`) is provided, links are no
+longer automatically added to the link set via `hal_link`. Please ensure that
+all links are defined as model `attributes` and their `key_value` mappings
+provided.
+
+This is useful for the scenario where the link set needs to be
+customized to provide additional attributes or behavior.
+
+A LinkSetClass for a resource must implement the following interface:
+
+[source,ruby]
+----
+module MyApi
+  # This represents the link set of a Resource
+  class ResourceLinkSet < Lutaml::Model::Serializable
+    attribute :attribute_name_1, :link_class_1, collection: {true|false}
+    attribute :attribute_name_2, :link_class_2, collection: {true|false}
+    # ...
+
+    key_value do
+      map 'link_key_1', to: :attribute_name_1
+      map 'link_key_2', to: :attribute_name_2
+      # ...
+    end
+  end
+
+  # This represents the basic setup of a Resource with a custom LinkSet class
+  class Resource < Lutaml::Hal::Resource
+    attribute :links, ResourceLinkSet
+    # Define resource attributes
+
+    key_value do
+      # This is the mapping of the `_links` key to the attribute `links`.
+      map '_links', to: :links
+      # Mappings for resource attributes need to be explicitly provided
+    end
+  end
+end
+----
+
+Alternatively, it is possible to re-open the dynamically created link set class
+and add additional attributes to it.
+
+.Override the default link set class for Product
+[source,ruby]
+----
+module MyApi
+  class Product < Lutaml::Hal::Resource
+    attribute :id, :string
+  end
+  # The class `MyApi::ProductLinkSet` is created automatically by the library.
+
+  # Re-open the default link set class and add additional attributes
+  class ProductLinkSet < Lutaml::Hal::LinkSet
+    # Add additional attributes to the link set
+    attribute :custom_link_set_attribute, Something, collection: false
+
+    key_value do
+      map 'my_custom_link', to: :custom_link_set_attribute
+    end
+  end
+end
+----
+
+==== Custom link class
+
+When a custom link class (via `link_class:`) is provided, the custom link class
+is automatically added into the link set.
+
+This makes it possible to:
+
+* supplement the link with additional attributes, or
+* override the `realize(register)` method to provide custom behavior for the link.
+
+A Link class pointing to a resource must implement the following interface:
+
+[source,ruby]
+----
+module MyApi
+  # This represents a link set pointing to a Resource
+  class TargetResourceLink < Lutaml::Model::Serializable
+    # This is the link class for the resource class Resource
+    # 'default:' needs to be set to the name of the target resource class
+    attribute :type, :string, default: 'Resource'
+
+    # No specification of key_value block needed since attribute presence
+    # provides a default mapping.
+  end
+end
+----
+
+Alternatively, it is possible to re-open the dynamically created link class and add
+additional attributes to it.
+
+.Override the default link class for Product
+[source,ruby]
+----
+module MyApi
+  class Product < Lutaml::Hal::Resource
+    attribute :id, :string
+    hal_link :category, key: 'category', realize_class: 'Category'
+  end
+  # The class `MyApi::CategoryLink` is created automatically by the library.
+
+  # Re-open the default link class and add additional attributes
+  class CategoryLink < Lutaml::Hal::Link
+    # Add additional attributes to the link
+    attribute :language_code, :string, collection: false
+
+    key_value do
+      map 'language_code', to: :language_code
+    end
+  end
+end
+----
 
 
 

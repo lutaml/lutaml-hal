@@ -14,7 +14,7 @@ module Lutaml
         def inherited(subclass)
           super
           subclass.class_eval do
-            create_links_class
+            create_link_set_class
             init_links_definition
           end
         end
@@ -25,21 +25,31 @@ module Lutaml
         # The "collection" is a boolean indicating if the link
         # is a collection of resources or a single resource
         # The "type" is the type of the link (default is :link, can be :resource)
-        def hal_link(attr_key, key:, realize_class:, collection: false, type: :link)
+        def hal_link(attr_key,
+                     key:,
+                     realize_class:,
+                     link_class: nil,
+                     link_set_class: nil,
+                     collection: false,
+                     type: :link)
           # Use the provided "key" as the attribute name
           attribute_name = attr_key.to_sym
 
           # Create a dynamic Link subclass name based on "realize_class", the
-          # class to realize for a Link object
-          link_klass = create_link_class(realize_class)
-          links_klass = get_links_class
-          links_klass.class_eval do
-            # Declare the corresponding lutaml-model attribute
-            attribute attribute_name, link_klass, collection: collection
+          # class to realize for a Link object, if `link_class:` is not provided.
+          link_klass = link_class || create_link_class(realize_class)
 
-            # Define the mapping for the attribute
-            key_value do
-              map attr_key, to: attribute_name
+          # Create a dynamic LinkSet class if `link_set_class:` is not provided.
+          unless link_set_class
+            link_set_klass = link_set_class || get_links_class
+            link_set_klass.class_eval do
+              # Declare the corresponding lutaml-model attribute
+              attribute attribute_name, link_klass, collection: collection
+
+              # Define the mapping for the attribute
+              key_value do
+                map attr_key, to: attribute_name
+              end
             end
           end
 
@@ -59,7 +69,7 @@ module Lutaml
         # This method obtains the Links class that holds the Link classes
         def get_links_class
           parent_klass_name = name.split('::')[0..-2].join('::')
-          child_klass_name = "#{name.split('::').last}Links"
+          child_klass_name = "#{name.split('::').last}LinkSet"
           klass_name = "#{parent_klass_name}::#{child_klass_name}"
 
           raise unless Object.const_defined?(klass_name)
@@ -71,22 +81,22 @@ module Lutaml
 
         # The "links" class holds the `_links` object which contains
         # the resource-linked Link classes
-        def create_links_class
+        def create_link_set_class
           parent_klass_name = name.split('::')[0..-2].join('::')
-          child_klass_name = "#{name.split('::').last}Links"
+          child_klass_name = "#{name.split('::').last}LinkSet"
           klass_name = "#{parent_klass_name}::#{child_klass_name}"
 
-          # Check if the Links class is already defined, return if so
+          # Check if the LinkSet class is already defined, return if so
           return Object.const_get(klass_name) if Object.const_defined?(klass_name)
 
-          # Define the links class dynamically as a normal Lutaml::Model class
+          # Define the LinkSet class dynamically as a normal Lutaml::Model class
           # since it is not a Resource
           klass = Class.new(Lutaml::Model::Serializable)
           Object.const_get(parent_klass_name).tap do |parent_klass|
             parent_klass.const_set(child_klass_name, klass)
           end
 
-          # Define the Links class with mapping inside the current class
+          # Define the LinkSet class with mapping inside the current class
           class_eval do
             attribute :links, klass
             key_value do
