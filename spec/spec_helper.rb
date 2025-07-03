@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'rspec/matchers'
+require 'lutaml-hal'
 
 RSpec.configure do |config|
   # Enable flags like --only-failures and --next-failure
