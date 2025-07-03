@@ -6,7 +6,8 @@ source 'https://rubygems.org'
 gemspec
 
 gem 'rake'
-gem 'rspec', '~> 3.12'
+gem 'rspec'
 gem 'rubocop'
-
-gem 'lutaml-model', git: 'https://github.com/lutaml/lutaml-model.git'
+gem 'rubocop-performance'
+gem 'rubocop-rake'
+gem 'rubocop-rspec'
