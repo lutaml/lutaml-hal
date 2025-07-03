@@ -145,10 +145,10 @@ RSpec.describe Lutaml::Hal::Page do
       end
     end
 
-    describe '#has_next?' do
+    describe '#next?' do
       it 'returns true when next link exists' do
-        expect(page_1.has_next?).to be true
-        expect(page_2.has_next?).to be true
+        expect(page_1.next?).to be true
+        expect(page_2.next?).to be true
       end
 
       it 'returns false when next link does not exist' do
@@ -157,34 +157,34 @@ RSpec.describe Lutaml::Hal::Page do
           'pages' => 5,
           '_links' => { 'prev' => { 'href' => '/sample_pages/4' } }
         }.to_json)
-        expect(page_without_next.has_next?).to be false
+        expect(page_without_next.next?).to be false
       end
     end
 
-    describe '#has_prev?' do
+    describe '#prev?' do
       it 'returns true when prev link exists' do
-        expect(page_2.has_prev?).to be true
-        expect(page_5.has_prev?).to be true
+        expect(page_2.prev?).to be true
+        expect(page_5.prev?).to be true
       end
 
       it 'returns false when prev link does not exist' do
-        expect(page_1.has_prev?).to be false
+        expect(page_1.prev?).to be false
       end
     end
 
-    describe '#has_first?' do
+    describe '#first?' do
       it 'returns true when first link exists' do
-        expect(page_1.has_first?).to be true
-        expect(page_2.has_first?).to be true
-        expect(page_5.has_first?).to be true
+        expect(page_1.first?).to be true
+        expect(page_2.first?).to be true
+        expect(page_5.first?).to be true
       end
     end
 
-    describe '#has_last?' do
+    describe '#last?' do
       it 'returns true when last link exists' do
-        expect(page_1.has_last?).to be true
-        expect(page_2.has_last?).to be true
-        expect(page_5.has_last?).to be true
+        expect(page_1.last?).to be true
+        expect(page_2.last?).to be true
+        expect(page_5.last?).to be true
       end
     end
   end

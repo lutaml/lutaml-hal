@@ -94,28 +94,28 @@ module Lutaml
       # Checks if there is a next page available
       #
       # @return [Boolean] true if next page exists, false otherwise
-      def has_next?
+      def next?
         !links.next.nil?
       end
 
       # Checks if there is a previous page available
       #
       # @return [Boolean] true if previous page exists, false otherwise
-      def has_prev?
+      def prev?
         !links.prev.nil?
       end
 
       # Checks if there is a first page link available
       #
       # @return [Boolean] true if first page link exists, false otherwise
-      def has_first?
+      def first?
         !links.first.nil?
       end
 
       # Checks if there is a last page link available
       #
       # @return [Boolean] true if last page link exists, false otherwise
-      def has_last?
+      def last?
         !links.last.nil?
       end
 

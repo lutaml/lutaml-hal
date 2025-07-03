@@ -131,40 +131,44 @@ module Lutaml
 
         return false unless pattern && href
 
-        # Parse the href to separate path and query parameters
-        uri = URI.parse(href.start_with?('http') ? href : "#{client&.api_url}#{href}")
-        href_path = uri.path
-        href_query_params = parse_query_params(uri.query)
+        uri = parse_href_uri(href)
+        pattern_path = extract_pattern_path(pattern)
 
-        # Extract path from pattern (remove query parameters if any)
-        pattern_path = pattern.split('?').first
+        return false unless path_matches?(pattern_path, uri.path)
+        return true unless query_params
 
-        # Check if the path matches
-        path_matches = if href.start_with?('/') && client&.api_url
+        query_params_match?(query_params, parse_query_params(uri.query))
+      end
+
+      def parse_href_uri(href)
+        full_href = href.start_with?('http') ? href : "#{client&.api_url}#{href}"
+        URI.parse(full_href)
+      end
+
+      def extract_pattern_path(pattern)
+        pattern.split('?').first
+      end
+
+      def path_matches?(pattern_path, href_path)
+        if href_path.start_with?('/') && client&.api_url
           path_pattern = extract_path(pattern_path)
-          pattern_match?(path_pattern, href_path) ||
-            pattern_match?(pattern_path, href_path)
+          pattern_match?(path_pattern, href_path) || pattern_match?(pattern_path, href_path)
         else
           pattern_match?(pattern_path, href_path)
         end
+      end
 
-        return false unless path_matches
+      def query_params_match?(expected_params, actual_params)
+        expected_params.all? do |param_name, param_pattern|
+          actual_value = actual_params[param_name]
+          next false unless actual_value
 
-        # If no query parameters are defined in the pattern, any query params in href are acceptable
-        return true unless query_params
-
-        # Check if query parameters match
-        query_params.all? do |param_name, param_pattern|
-          href_value = href_query_params[param_name]
-          next false unless href_value
-
-          # If pattern is a template like {page}, it matches any value
-          if param_pattern.is_a?(String) && param_pattern.match?(/\{.+\}/)
-            true
-          else
-            href_value == param_pattern.to_s
-          end
+          template_param?(param_pattern) || actual_value == param_pattern.to_s
         end
+      end
+
+      def template_param?(param_pattern)
+        param_pattern.is_a?(String) && param_pattern.match?(/\{.+\}/)
       end
 
       def parse_query_params(query_string)
