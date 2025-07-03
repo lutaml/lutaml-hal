@@ -552,15 +552,27 @@ You can define endpoints for collections (index) and individual resources
 
 The `add_endpoint` method takes the following parameters:
 
-`id`:: A unique identifier for the endpoint.
-`type`:: The type of endpoint, which can be `index` or `resource`.
-`url`:: The URL of the endpoint, which can include path parameters.
-`model`:: The class of the resource that will be fetched from the API.
-The class must inherit from `Lutaml::Hal::Resource`.
 
+`id`:: A unique identifier for the endpoint.
+
+`type`:: The type of endpoint, which can be `index` or `resource`.
+
+`url`:: The URL of the endpoint, which can include path parameters.
++
 In the `url`, you can use interpolation parameters, which will be replaced with
 the actual values when fetching the resource. The interpolation parameters are
 defined in the `url` string using curly braces `{}`.
+
+`model`:: The class of the resource that will be fetched from the API.
+The class must inherit from `Lutaml::Hal::Resource`.
+
+`query_params`:: (optional) A hash defining query parameters that should be
+appended to the URL when fetching the resource. Supports parameter templates
+using curly braces `{}` for dynamic values.
++
+This is essential for APIs that require query parameters for pagination,
+filtering, or other functionality where the same base URL needs different query
+parameters to access different resources or views.
 
 The `add_endpoint` method will automatically handle the URL resolution and fetch
 the resource from the API.
@@ -592,6 +604,35 @@ register.add_endpoint( <1>
 <5> The `model` is the class of the resource that will be fetched from
     the API. The class must inherit from `Lutaml::Hal::Resource`.
 
+
+.Example of registering and using query parameters
+[example]
+====
+[source,ruby]
+----
+# Register an endpoint that supports pagination via query parameters
+register.add_endpoint(
+  id: :product_index,
+  type: :index,
+  url: '/products',
+  model: ProductIndex,
+  query_params: {
+    'page' => '{page}',
+    'items' => '{items}'
+  }
+)
+
+# Fetch the first page with 10 items per page
+page_1 = register.fetch(:product_index, page: 1, items: 10)
+# => client.get('/products?page=1&items=10')
+
+# Fetch the second page with 5 items per page
+page_2 = register.fetch(:product_index, page: 2, items: 5)
+# => client.get('/products?page=2&items=5')
+----
+====
+
+
 .Example of registering the Product class to both index and resource endpoints
 [example]
 ====
@@ -610,6 +651,34 @@ register.add_endpoint(
   url: '/products/{id}',
   model: Product
 )
+----
+====
+
+
+.Example of using query_params for pagination
+[example]
+====
+[source,ruby]
+----
+# Register an endpoint that supports pagination via query parameters
+register.add_endpoint(
+  id: :product_index_paginated,
+  type: :index,
+  url: '/products',
+  model: ProductIndex,
+  query_params: {
+    'page' => '{page}',
+    'items' => '{items}'
+  }
+)
+
+# Fetch the first page with 10 items per page
+page_1 = register.fetch(:product_index_paginated, page: 1, items: 10)
+# => client.get('/products?page=1&items=10')
+
+# Fetch the second page with 5 items per page
+page_2 = register.fetch(:product_index_paginated, page: 2, items: 5)
+# => client.get('/products?page=2&items=5')
 ----
 ====
 
@@ -920,12 +989,87 @@ product_2_related_1 = product_2.links.related.first.realize
 
 === Handling HAL pages / pagination
 
+==== General
+
 The `Lutaml::Hal::Page` class is used to handle pagination in HAL APIs.
 
 As described in <<defining_hal_page_models>>, subclassing the `Page` class
 provides pagination capabilities, including the management of links to navigate
 through pages of resources.
 
+==== Pagination navigation methods
+
+The `Page` class provides several convenience methods for navigating through
+paginated results:
+
+`#next_page`:: Returns the next page link if available, `nil` otherwise.
+
+`#prev_page`:: Returns the previous page link if available, `nil` otherwise.
+
+`#first_page`:: Returns the first page link if available, `nil` otherwise.
+
+`#last_page`:: Returns the last page link if available, `nil` otherwise.
+
+These methods return `Link` objects that can be realized using the `realize` method:
+
+[source,ruby]
+----
+# Navigate to next page
+if current_page.next_page
+  next_page = current_page.next_page.realize
+end
+
+# Navigate to previous page
+if current_page.prev_page
+  prev_page = current_page.prev_page.realize
+end
+
+# Jump to first or last page
+first_page = current_page.first_page.realize if current_page.first_page
+last_page = current_page.last_page.realize if current_page.last_page
+----
+
+==== Pagination helper methods
+
+The `Page` class also provides helper methods to check the availability of
+navigation links:
+
+`#has_next?`:: Returns `true` if there is a next page available, `false`
+otherwise.
+
+`#has_prev?`:: Returns `true` if there is a previous page available, `false`
+otherwise.
+
+`#has_first?`:: Returns `true` if there is a first page link available, `false`
+otherwise.
+
+`#has_last?`:: Returns `true` if there is a last page link available, `false`
+otherwise.
+
+`#total_pages`:: Returns the total number of pages (alias for the `pages`
+attribute).
+
+
+==== Exhaustive pagination
+
+For scenarios where you need to process all pages of results, you can combine
+the pagination methods:
+
+[source,ruby]
+----
+current_page = register.fetch(:resource_index)
+
+while current_page
+  # Process current page
+  puts "Processing page #{current_page.page} of #{current_page.total_pages}"
+
+  # Move to next page
+  current_page = current_page.next
+end
+----
+
+
+==== Usage
 
 .Usage example of the Page class
 [example]
@@ -980,11 +1124,33 @@ page_1
 #                next: #<ResourceIndexLink href: "/resources?page=2&items=10">,
 #                last: #<ResourceIndexLink href: "/resources?page=10&items=10">>>
 
+# Check if navigation is available
+page_1.has_next?    # => true
+page_1.has_prev?    # => false
+page_1.total_pages  # => 10
+
+# Navigate using convenience methods
+page_2 = page_1.next
+# => client.get('/resources?page=2&items=10')
+# => #<ResourceIndex page: 2, pages: 10, limit: 10, total: 100, ...>
+
+page_2.has_prev?    # => true
+page_2.has_next?    # => true
+
+# Navigate back to first page
+first_page = page_2.first
+# => client.get('/resources?page=1&items=10')
+
+# Jump to last page
+last_page = page_2.last
+# => client.get('/resources?page=10&items=10')
+
+# Alternative: using link realization (original method)
 # Without a GlobalRegister
-page_2 = page.links.next.realize(register)
+page_2 = page_1.links.next.realize(register)
 
 # With a GlobalRegister
-page_2 = page.links.next.realize
+page_2 = page_1.links.next.realize
 
 # => client.get('/resources?page=2&items=10')
 # => #<ResourceIndex page: 2, pages: 10, limit: 10, total: 100,

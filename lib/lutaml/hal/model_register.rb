@@ -16,11 +16,11 @@ module Lutaml
       end
 
       # Register a model with its base URL pattern
-      def add_endpoint(id:, type:, url:, model:)
+      def add_endpoint(id:, type:, url:, model:, query_params: nil)
         @models ||= {}
 
         raise "Model with ID #{id} already registered" if @models[id]
-        if @models.values.any? { |m| m[:url] == url && m[:type] == type }
+        if @models.values.any? { |m| m[:url] == url && m[:type] == type && m[:query_params] == query_params }
           raise "Duplicate URL pattern #{url} for type #{type}"
         end
 
@@ -28,7 +28,8 @@ module Lutaml
           id: id,
           type: type,
           url: url,
-          model: model
+          model: model,
+          query_params: query_params
         }
       end
 
@@ -38,7 +39,7 @@ module Lutaml
         raise 'Client not configured' unless client
 
         url = interpolate_url(endpoint[:url], params)
-        response = client.get(url)
+        response = client.get(build_url_with_query_params(url, endpoint[:query_params], params))
 
         realized_model = endpoint[:model].from_json(response.to_json)
 
@@ -103,10 +104,76 @@ module Lutaml
         end
       end
 
+      def build_url_with_query_params(base_url, query_params_template, params)
+        return base_url unless query_params_template
+
+        query_params = []
+        query_params_template.each do |param_name, param_template|
+          # If the template is like {page}, look for the param in the passed params
+          if param_template.is_a?(String) && param_template.match?(/\{(.+)\}/)
+            param_key = param_template.match(/\{(.+)\}/)[1]
+            query_params << "#{param_name}=#{params[param_key.to_sym]}" if params[param_key.to_sym]
+          end
+        end
+
+        query_params.any? ? "#{base_url}?#{query_params.join('&')}" : base_url
+      end
+
       def find_matching_model_class(href)
         @models.values.find do |model_data|
-          matches_url?(model_data[:url], href)
+          matches_url_with_params?(model_data, href)
         end&.[](:model)
+      end
+
+      def matches_url_with_params?(model_data, href)
+        pattern = model_data[:url]
+        query_params = model_data[:query_params]
+
+        return false unless pattern && href
+
+        # Parse the href to separate path and query parameters
+        uri = URI.parse(href.start_with?('http') ? href : "#{client&.api_url}#{href}")
+        href_path = uri.path
+        href_query_params = parse_query_params(uri.query)
+
+        # Extract path from pattern (remove query parameters if any)
+        pattern_path = pattern.split('?').first
+
+        # Check if the path matches
+        path_matches = if href.start_with?('/') && client&.api_url
+          path_pattern = extract_path(pattern_path)
+          pattern_match?(path_pattern, href_path) ||
+            pattern_match?(pattern_path, href_path)
+        else
+          pattern_match?(pattern_path, href_path)
+        end
+
+        return false unless path_matches
+
+        # If no query parameters are defined in the pattern, any query params in href are acceptable
+        return true unless query_params
+
+        # Check if query parameters match
+        query_params.all? do |param_name, param_pattern|
+          href_value = href_query_params[param_name]
+          next false unless href_value
+
+          # If pattern is a template like {page}, it matches any value
+          if param_pattern.is_a?(String) && param_pattern.match?(/\{.+\}/)
+            true
+          else
+            href_value == param_pattern.to_s
+          end
+        end
+      end
+
+      def parse_query_params(query_string)
+        return {} unless query_string
+
+        query_string.split('&').each_with_object({}) do |param, hash|
+          key, value = param.split('=', 2)
+          hash[key] = value if key
+        end
       end
 
       def matches_url?(pattern, href)
@@ -134,8 +201,8 @@ module Lutaml
 
         # Convert {param} to wildcards for matching
         pattern_with_wildcards = pattern.gsub(/\{[^}]+\}/, '*')
-        # Convert * wildcards to regex pattern
-        regex = Regexp.new("^#{pattern_with_wildcards.gsub('*', '[^/]+')}$")
+        # Convert * wildcards to regex pattern - use .+ instead of [^/]+ to match query parameters
+        regex = Regexp.new("^#{pattern_with_wildcards.gsub('*', '.+')}$")
 
         Hal.debug_log("pattern_match?: regex: #{regex.inspect}")
         Hal.debug_log("pattern_match?: href to match #{url}")
