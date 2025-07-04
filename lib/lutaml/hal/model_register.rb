@@ -113,6 +113,9 @@ module Lutaml
           if param_template.is_a?(String) && param_template.match?(/\{(.+)\}/)
             param_key = param_template.match(/\{(.+)\}/)[1]
             query_params << "#{param_name}=#{params[param_key.to_sym]}" if params[param_key.to_sym]
+          else
+            # Fixed parameter - always include it
+            query_params << "#{param_name}=#{param_template}"
           end
         end
 
@@ -120,9 +123,18 @@ module Lutaml
       end
 
       def find_matching_model_class(href)
-        @models.values.find do |model_data|
-          matches_url_with_params?(model_data, href)
-        end&.[](:model)
+        # Find all matching patterns and select the most specific one (longest pattern)
+        matching_models = @models.values.select do |model_data|
+          matches = matches_url_with_params?(model_data, href)
+          matches
+        end
+
+        return nil if matching_models.empty?
+
+        # Sort by pattern length (descending) to get the most specific match first
+        result = matching_models.max_by { |model_data| model_data[:url].length }
+
+        result[:model]
       end
 
       def matches_url_with_params?(model_data, href)
@@ -134,10 +146,13 @@ module Lutaml
         uri = parse_href_uri(href)
         pattern_path = extract_pattern_path(pattern)
 
-        return false unless path_matches?(pattern_path, uri.path)
+        path_match_result = path_matches?(pattern_path, uri.path)
+        return false unless path_match_result
+
         return true unless query_params
 
-        query_params_match?(query_params, parse_query_params(uri.query))
+        parsed_query = parse_query_params(uri.query)
+        query_params_match?(query_params, parsed_query)
       end
 
       def parse_href_uri(href)
@@ -150,20 +165,23 @@ module Lutaml
       end
 
       def path_matches?(pattern_path, href_path)
-        if href_path.start_with?('/') && client&.api_url
-          path_pattern = extract_path(pattern_path)
-          pattern_match?(path_pattern, href_path) || pattern_match?(pattern_path, href_path)
-        else
-          pattern_match?(pattern_path, href_path)
-        end
+        pattern_match?(pattern_path, href_path)
       end
 
       def query_params_match?(expected_params, actual_params)
+        # Query parameters should be optional - if they're template parameters (like {page}),
+        # they don't need to be present in the actual URL
         expected_params.all? do |param_name, param_pattern|
           actual_value = actual_params[param_name]
-          next false unless actual_value
 
-          template_param?(param_pattern) || actual_value == param_pattern.to_s
+          # If it's a template parameter (like {page}), it's optional
+          if template_param?(param_pattern)
+            # Template parameters are always considered matching (they're optional)
+            true
+          else
+            # Non-template parameters must match exactly if present
+            actual_value == param_pattern.to_s
+          end
         end
       end
 
@@ -205,8 +223,9 @@ module Lutaml
 
         # Convert {param} to wildcards for matching
         pattern_with_wildcards = pattern.gsub(/\{[^}]+\}/, '*')
-        # Convert * wildcards to regex pattern - use .+ instead of [^/]+ to match query parameters
-        regex = Regexp.new("^#{pattern_with_wildcards.gsub('*', '.+')}$")
+        # Convert * wildcards to regex pattern - use [^/]+ to match path segments, not across slashes
+        # This ensures that {param} only matches a single path segment
+        regex = Regexp.new("^#{pattern_with_wildcards.gsub('*', '[^/]+')}$")
 
         Hal.debug_log("pattern_match?: regex: #{regex.inspect}")
         Hal.debug_log("pattern_match?: href to match #{url}")
