@@ -2,6 +2,8 @@
 
 require 'lutaml/model'
 require_relative 'link'
+require_relative 'link_class_factory'
+require_relative 'link_set_class_factory'
 
 module Lutaml
   module Hal
@@ -18,7 +20,6 @@ module Lutaml
         def inherited(subclass)
           super
           subclass.class_eval do
-            create_link_set_class
             init_links_definition
           end
         end
@@ -36,21 +37,47 @@ module Lutaml
                      link_set_class: nil,
                      collection: false,
                      type: :link)
+          # Validate required parameters
+          raise ArgumentError, 'realize_class parameter is required' if realize_class.nil?
+
           # Use the provided "key" as the attribute name
           attribute_name = attr_key.to_sym
 
           Hal.debug_log "Defining HAL link for `#{attr_key}` with realize class `#{realize_class}`"
 
-          # Create a dynamic Link subclass name based on "realize_class", the
-          # class to realize for a Link object, if `link_class:` is not provided.
-          link_klass = link_class || create_link_class(realize_class)
+          # Normalize realize_class to a string for consistent handling
+          # Support both Class objects (when autoload is available) and strings (for delayed interpretation)
+          realize_class_name = case realize_class
+                               when Class
+                                 realize_class.name.split('::').last # Use simple name from actual class
+                               when String
+                                 realize_class # Use string as-is for lazy resolution
+                               else
+                                 raise ArgumentError,
+                                       "realize_class must be a Class or String, got #{realize_class.class}"
+                               end
 
           # Create a dynamic LinkSet class if `link_set_class:` is not provided.
+          # This must happen BEFORE creating the Link class to ensure proper order
+          link_set_klass = link_set_class || create_link_set_class
+
+          # Ensure it was actually created
+          raise 'Failed to create LinkSet class' if link_set_klass.nil?
+
+          # Create a dynamic Link subclass name based on "realize_class", the
+          # class to realize for a Link object, if `link_class:` is not provided.
+          link_klass = link_class || create_link_class(realize_class_name)
+
+          # Now add the link to the LinkSet class
           unless link_set_class
-            link_set_klass = link_set_class || get_link_set_class
             link_set_klass.class_eval do
               # Declare the corresponding lutaml-model attribute
-              attribute attribute_name, link_klass, collection: collection
+              # Pass collection parameter correctly to the attribute definition
+              if collection
+                attribute attribute_name, link_klass, collection: true
+              else
+                attribute attribute_name, link_klass
+              end
 
               # Define the mapping for the attribute
               key_value do
@@ -73,69 +100,26 @@ module Lutaml
         end
 
         # This method obtains the Links class that holds the Link classes
+        # Delegates to LinkSetClassFactory for simplified implementation
         def get_link_set_class
-          parent_klass_name = name.split('::')[0..-2].join('::')
-          child_klass_name = "#{name.split('::').last}LinkSet"
-          klass_name = [parent_klass_name, child_klass_name].join('::')
-
-          raise unless Object.const_defined?(klass_name)
-
-          Object.const_get(klass_name)
+          create_link_set_class
         end
-
-        private
 
         # The "links" class holds the `_links` object which contains
         # the resource-linked Link classes
+        # Delegates to LinkSetClassFactory for simplified implementation
         def create_link_set_class
-          parent_klass_name = name.split('::')[0..-2].join('::')
-          child_klass_name = "#{name.split('::').last}LinkSet"
-          klass_name = [parent_klass_name, child_klass_name].join('::')
-
-          Hal.debug_log "Creating link set class #{klass_name}"
-
-          # Check if the LinkSet class is already defined, return if so
-          return Object.const_get(klass_name) if Object.const_defined?(klass_name)
-
-          # Define the LinkSet class dynamically as a normal Lutaml::Model class
-          # since it is not a Resource.
-          klass = Class.new(Lutaml::Hal::LinkSet)
-          parent_klass = !parent_klass_name.empty? ? Object.const_get(parent_klass_name) : Object
-          parent_klass.const_set(child_klass_name, klass)
-
-          # Define the LinkSet class with mapping inside the current class
-          class_eval do
-            attribute :links, klass
-            key_value do
-              map '_links', to: :links
-            end
-          end
+          LinkSetClassFactory.create_for(self)
         end
 
         def init_links_definition
           @link_definitions = {}
         end
 
-        # This is a Link class that helps us realize the targeted class
+        # Creates a Link class that helps us realize the targeted class
+        # Delegates to LinkClassFactory for simplified implementation
         def create_link_class(realize_class_name)
-          parent_klass_name = name.split('::')[0..-2].join('::')
-          child_klass_name = "#{realize_class_name.split('::').last}Link"
-          klass_name = [parent_klass_name, child_klass_name].join('::')
-
-          Hal.debug_log "Creating link class #{klass_name} for #{realize_class_name}"
-
-          return Object.const_get(klass_name) if Object.const_defined?(klass_name)
-
-          # Define the link class dynamically
-          klass = Class.new(Link) do
-            # Define the link class with the specified key and class
-            attribute :type, :string, default: realize_class_name
-          end
-
-          parent_klass = !parent_klass_name.empty? ? Object.const_get(parent_klass_name) : Object
-          parent_klass.const_set(child_klass_name, klass)
-
-          klass
+          LinkClassFactory.create_for(self, realize_class_name)
         end
       end
     end
