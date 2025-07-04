@@ -23,6 +23,9 @@ module Lutaml
       def self.inherited(subclass)
         super
 
+        # Skip automatic link creation for anonymous classes (used in tests)
+        return unless subclass.name
+
         page_links_symbols = %i[self next prev first last up]
         subclass_name = subclass.name
         subclass.class_eval do

@@ -306,8 +306,6 @@ end
 ----
 ====
 
-
-
 ==== HAL Links
 
 A HAL resource has links to other resources, typically serialized in
@@ -335,6 +333,8 @@ hal_link :link_name,
   link_set_class: 'LinkSetClass'
 ----
 
+Where,
+
 `:link_name`:: The name of the link, which will be used to access the link in
 the resource object.
 
@@ -343,43 +343,77 @@ of the link as it appears in the `_links` section of the HAL resource.
 
 `realize_class: 'TargetResourceClass'`:: The class of the target resource that
 the link points to. This is used to resolve the link to the associated resource.
++
+The `realize_class` parameter supports two distinct use cases:
++
+--
+**String reference (recommended)**: Use string class names to delay resolution,
+especially when classes may be dynamically loaded or not available at definition time:
+
+[source,ruby]
+----
+hal_link :category, key: 'category', realize_class: 'Category'
+hal_link :products, key: 'products', realize_class: 'ProductIndex'
+----
+
+**Class reference**: Use actual class objects when classes are statically available
+at definition time or via autoload:
+
+[source,ruby]
+----
+hal_link :category, key: 'category', realize_class: Category
+hal_link :products, key: 'products', realize_class: ProductIndex
+----
+
+The framework's lazy resolution mechanism handles both cases seamlessly,
+automatically resolving string references to actual classes when needed during
+serialization. This ensures consistent type names in HAL output regardless of
+class loading order.
+--
 
 `link_class: 'LinkClass'`:: (optional) The class of the link that defines
 specific behavior or attributes for the link object itself. This is dynamically
 created and is inherited from `Lutaml::Hal::Link` if not provided.
++
+Like `realize_class`, this parameter supports both string and class references:
++
+--
+**String references (Recommended)**: Use string class names for maximum flexibility:
+
+[source,ruby]
+----
+hal_link :category, key: 'category', realize_class: 'Category', link_class: 'CategoryLink'
+----
+
+**Class references**: Use actual class objects when classes are statically available:
+
+[source,ruby]
+----
+hal_link :category, key: 'category', realize_class: Category, link_class: CategoryLink
+----
+--
 
 `link_set_class: 'LinkSetClass'`:: (optional) The class of the link set object
 that contains the links. This is dynamically created and is inherited from
-`Lutaml::Model::Serializable` if not provided.
+`Lutaml::Hal::LinkSet` if not provided.
++
+Like `realize_class`, this parameter supports both string and class references:
++
+--
+**String references (Recommended)**: Use string class names for maximum flexibility:
 
+[source,ruby]
+----
+hal_link :category, key: 'category', realize_class: 'Category', link_set_class: 'ProductLinkSet'
+----
 
-The `_links` section is modeled as a dynamically created link set class, named
-after the resource's class name (with an appended `LinkSet` string), which in turn
-contains the defined links to other resources. The link set class is inherited
-from `Lutaml::Model::Serializable`.
+**Class references**: Use actual class objects when classes are statically available:
 
-[example]
-====
-A HAL resource of class `Product` may have a link set of class `ProductLinkSet`
-which contains the `self` and `category` links as its attributes.
-====
-
-
-Each link object of the link set is provided as a `Link` object that is
-dynamically created for the type of resolved resource. The name of the link
-class is the same as the resource class name with an appended `Link` string.
-This Link class is inherited from `Lutaml::Hal::Link`.
-
-[example]
-====
-A HAL resource of class `Product` with a link set that contains the `self`
-(points to a `Product`) and `category` (points to a `Category`) links will
-have:
-
-* a link set of class `ProductLinks` which contains:
-** a `self` attribute that is an instance of `ProductLink`
-** a `category` attribute that is an instance of `CategoryLink`
-====
+[source,ruby]
+----
+hal_link :category, key: 'category', realize_class: Category, link_set_class: ProductLinkSet
+----
+--
 
 
 .Integrated example of a HAL resource model using auto-generated LinkSet and Link classes
@@ -409,9 +443,11 @@ end
 
 The library will provide:
 
-* the link set (serialized in HAL as JSON `_links`) in the class `ProductLinks`.
+* the link set (serialized in HAL as JSON `_links`) in the class
+`ProductLinkSet`.
 
-* the link set contains the `self` and the `category` links of class `Lutaml::Hal::Link`.
+* the link set contains the `self` link (as `ProductLink`) and the `category`
+link (as `CategoryLink`).
 
 As a result:
 
@@ -423,7 +459,76 @@ return an instance of `Product`.
 
 
 
-==== Custom link set class
+===== Dynamic definition of LinkSet and Link
+
+The `_links` section is modeled as a dynamically created link set class, named
+after the resource's class name (with an appended `LinkSet` string), which in turn
+contains the defined links to other resources. The link set class is automatically
+inherited from `Lutaml::Hal::LinkSet`.
+
+Each link in the link set is modeled as a dynamically created link class, named
+after the resource's class name (with an appended `Link` string). This link class
+is inherited from `Lutaml::Hal::Link`.
+
+[example]
+====
+A HAL resource of class `Product` may have a link set of class `ProductLinkSet`
+which contains the `self` and `category` links as its attributes.
+====
+
+The framework automatically:
+
+* Creates the LinkSet class when the resource class is defined
+* Adds a `links` attribute to the resource class
+* Maps the `_links` JSON key to the `links` attribute
+* Ensures consistent type naming regardless of class loading order
+
+Each link object of the link set is provided as a `Link` object that is
+dynamically created for the type of resolved resource. The name of the link
+class is the same as the resource class name with an appended `Link` string.
+This Link class is inherited from `Lutaml::Hal::Link`.
+
+[example]
+====
+A HAL resource of class `Product` with a link set that contains the `self`
+(points to a `Product`) and `category` (points to a `Category`) links will
+have:
+
+* a link set of class `ProductLinkSet` which contains:
+** a `self` attribute that is an instance of `ProductLink`
+** a `category` attribute that is an instance of `CategoryLink`
+====
+
+===== Lazy realization class loading and type naming
+
+The framework implements lazy type resolution of the `realize_class` argument in
+the `hal_link` command. This allows the instance to be realized on resolution to
+have its class defined after the definition of the `hal_link` command, for
+example, in the case when the class to be realized is loaded later in the
+application lifecycle.
+
+Technically, it is possible to have all models (the classes to be realized) to
+be defined before the HAL resource is created to ensure the realization classes
+are resolved. However, there are cases where classes are dynamically generated,
+resolved via registers or other mechanisms that make those classes available
+after the HAL resource is defined.
+
+This allows for greater flexibility in defining resource relationships and
+enables the use of dynamic class loading techniques.
+
+In addition, the definition of the `realize_class` argument in the `hal_link`
+command becomes useful in the case of polymorphism. The type name is used in
+Lutaml::Model for polymorphism and potentially serialized (if defined through
+Lutaml::Model serializatiion methods, as a Hal::Resource is also a
+Lutaml::Model).
+
+NOTE: This framework uses base class names (e.g., `ResourceClass`) instead of
+fully qualified namespaced class names (e.g., `MyModule::ResourceClass`) as the
+`type` attribute, by default.
+
+
+
+===== Custom link set class
 
 When a custom link set class (via `link_set_class:`) is provided, links are no
 longer automatically added to the link set via `hal_link`. Please ensure that
@@ -489,7 +594,7 @@ module MyApi
 end
 ----
 
-==== Custom link class
+===== Custom link class
 
 When a custom link class (via `link_class:`) is provided, the custom link class
 is automatically added into the link set.
@@ -540,8 +645,6 @@ module MyApi
   end
 end
 ----
-
-
 
 === Registering resource models and endpoints
 
@@ -744,8 +847,6 @@ must inherit from `Lutaml::Hal::Page`.
 `model`:: The class of the page that will be fetched from the API.
 
 
-
-
 == Usage: Runtime
 
 === General
@@ -810,7 +911,7 @@ product_1 = register.fetch(:product_resource, id: 1)
 
 product_1
 # => #<Product id: 1, name: "Product 1", price: 10.0, links:
-#      #<ProductLinks self: <ProductLink href: "/products/1">,
+#      #<ProductLinkSet self: <ProductLink href: "/products/1">,
 #                     category: <ProductLink href: "/categories/1", title: "Category 1">,
 #                     related: [
 #                         <ProductLink href: "/products/3", title: "Product 3">,
@@ -818,8 +919,6 @@ product_1
 #                     ]}>
 ----
 ====
-
-
 
 === Fetching a resource index
 
@@ -872,10 +971,10 @@ product_index = register.fetch(:product_index)
 
 product_index
 # => #<ProductPage page: 1, pages: 10, limit: 10, total: 45,
-#      links: #<ProductLinks self: <ProductLink href: "/products/1">,
+#      links: #<ProductLinkSet self: <ProductLink href: "/products/1">,
 #                     next: <ProductLink href: "/products/2">,
 #                     last: <ProductLink href: "/products/5">,
-#                     products: <ProductLinks
+#                     products: <ProductLinkSet
 #                         <ProductLink href: "/products/1", title: "Product 1">,
 #                         <ProductLink href: "/products/2", title: "Product 2">
 #                     ]>>
@@ -971,7 +1070,7 @@ product_2 = product_index.links.products.last.realize
 
 product_2
 # => #<Product id: 2, name: "Product 2", price: 20.0, links:
-#      #<ProductLinks self: <ProductLink href: "/products/2">,
+#      #<ProductLinkSet self: <ProductLink href: "/products/2">,
 #                     category: <ProductLink href: "/categories/2", title: "Category 2">,
 #                     related: [
 #                         <ProductLink href: "/products/4", title: "Product 4">,
@@ -985,7 +1084,6 @@ product_2_related_1 = product_2.links.related.first.realize(register)
 product_2_related_1 = product_2.links.related.first.realize
 ----
 ====
-
 
 === Handling HAL pages / pagination
 
