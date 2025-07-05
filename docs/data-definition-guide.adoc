@@ -59,7 +59,7 @@ The `GlobalRegister` class is a singleton that manages one or more
 `ModelRegister` instances.
 
 It is optional, but is required for automatic realization of models from Link
-objects. See the link:runtime-usage-guide.adoc[Runtime Usage Guide] for more
+objects. See the link:runtime-usage-guide.adoc[Runtime usage guide] for more
 details on fetching resources via link realization.
 
 [example]
@@ -593,13 +593,18 @@ parameters are defined in the `url` string using curly braces `{}`.
 `model`:: The class of the resource that will be fetched from the API. The
 class must inherit from `Lutaml::Hal::Resource`.
 
-`query_params`:: (optional) A hash defining query parameters that should be
-appended to the URL when fetching the resource. Supports parameter templates
-using curly braces `{}` for dynamic values.
+`parameters`:: (optional) An array of `Lutaml::Hal::EndpointParameter` objects
+defining query parameters that should be appended to the URL when fetching the
+resource. Each parameter includes schema validation and documentation.
 +
 This is essential for APIs that require query parameters for pagination,
 filtering, or other functionality where the same base URL needs different
 query parameters to access different resources or views.
+
+`embed_config`:: (optional) Configuration for HAL embed support. This allows
+the endpoint to fetch resources with embedded content, reducing the number of
+HTTP requests needed. See the <<embed-configuration,Embed configuration>>
+section for details.
 
 The `add_endpoint` method will automatically handle the URL resolution and
 fetch the resource from the API.
@@ -643,10 +648,16 @@ register.add_endpoint(
   type: :index,
   url: '/products',
   model: ProductIndex,
-  query_params: {
-    'page' => '{page}',
-    'items' => '{items}'
-  }
+  parameters: [
+    Lutaml::Hal::EndpointParameter.query('page',
+      schema: { type: :integer },
+      description: 'Page number'
+    ),
+    Lutaml::Hal::EndpointParameter.query('items',
+      schema: { type: :integer },
+      description: 'Items per page'
+    )
+  ]
 )
 
 # Fetch the first page with 10 items per page
@@ -678,34 +689,6 @@ register.add_endpoint(
   url: '/products/{id}',
   model: Product
 )
-----
-====
-
-=== Example of using query_params for pagination
-
-[example]
-====
-[source,ruby]
-----
-# Register an endpoint that supports pagination via query parameters
-register.add_endpoint(
-  id: :product_index_paginated,
-  type: :index,
-  url: '/products',
-  model: ProductIndex,
-  query_params: {
-    'page' => '{page}',
-    'items' => '{items}'
-  }
-)
-
-# Fetch the first page with 10 items per page
-page_1 = register.fetch(:product_index_paginated, page: 1, items: 10)
-# => client.get('/products?page=1&items=10')
-
-# Fetch the second page with 5 items per page
-page_2 = register.fetch(:product_index_paginated, page: 2, items: 5)
-# => client.get('/products?page=2&items=5')
 ----
 ====
 
@@ -778,6 +761,276 @@ class must inherit from `Lutaml::Hal::Page`.
 `url`:: The URL of the pagination endpoint.
 `model`:: The class of the page that will be fetched from the API.
 
+[[embed-configuration]]
+== Embed configuration
+
+=== General
+
+HAL embed support allows endpoints to fetch resources with embedded content,
+significantly reducing the number of HTTP requests needed to access related
+data. This is particularly useful for APIs that support HAL's `_embedded`
+section.
+
+The `embed_config` parameter in `add_endpoint` accepts an
+`Lutaml::Hal::EndpointConfiguration` object that defines how embed requests
+should be handled for that endpoint.
+
+=== Embed mechanisms
+
+==== General
+
+The framework supports four different embed mechanisms:
+
+* Parameter-based embed (most common)
+* URL-based embed
+* Header-based embed
+* Auto embed
+
+==== Parameter-based embed
+
+This mechanism adds query parameters to the request URL to enable embed
+functionality.
+
+[example]
+====
+[source,ruby]
+----
+embed_config = Lutaml::Hal::EndpointConfiguration.new(
+  mechanism: :parameter,
+  parameter_name: 'embed',
+  parameter_value: 'true'
+)
+
+register.add_endpoint(
+  id: :product_index,
+  type: :index,
+  url: '/products',
+  model: ProductIndex,
+  embed_config: embed_config
+)
+
+# When fetching with embed enabled:
+# GET /products?embed=true
+----
+====
+
+==== URL-based embed
+
+This mechanism uses special embed URLs that are different from the standard
+resource URLs.
+
+[example]
+====
+[source,ruby]
+----
+embed_config = Lutaml::Hal::EndpointConfiguration.new(
+  mechanism: :url,
+  embed_url: '/products/embedded'
+)
+
+register.add_endpoint(
+  id: :product_index,
+  type: :index,
+  url: '/products',
+  model: ProductIndex,
+  embed_config: embed_config
+)
+
+# When fetching with embed enabled:
+# GET /products/embedded
+----
+====
+
+==== Header-based embed
+
+This mechanism uses HTTP headers to request embedded content.
+
+[example]
+====
+[source,ruby]
+----
+embed_config = Lutaml::Hal::EndpointConfiguration.new(
+  mechanism: :header,
+  header_name: 'X-Embed',
+  header_value: 'true'
+)
+
+register.add_endpoint(
+  id: :product_index,
+  type: :index,
+  url: '/products',
+  model: ProductIndex,
+  embed_config: embed_config
+)
+
+# When fetching with embed enabled:
+# GET /products
+# X-Embed: true
+----
+====
+
+==== Auto embed
+
+This mechanism assumes the server always provides embedded content without
+any special configuration.
+
+[example]
+====
+[source,ruby]
+----
+embed_config = Lutaml::Hal::EndpointConfiguration.new(
+  mechanism: :auto
+)
+
+register.add_endpoint(
+  id: :product_index,
+  type: :index,
+  url: '/products',
+  model: ProductIndex,
+  embed_config: embed_config
+)
+
+# All requests automatically include embedded content:
+# GET /products
+----
+====
+
+=== Working with embedded content
+
+==== Checking for embedded content
+
+Resources that support embed functionality provide methods to check for and
+access embedded content:
+
+[example]
+====
+[source,ruby]
+----
+# Fetch a resource with embed enabled
+products = register.fetch(:product_index, embed: true)
+
+# Check if embedded content exists
+if products.has_embedded?('products')
+  puts "Embedded products available"
+end
+
+# Get embedded content keys
+embedded_keys = products.embedded_keys
+puts "Available embedded content: #{embedded_keys}"
+
+# Access embedded content directly
+embedded_products = products.get_embedded('products')
+----
+====
+
+==== Link realization with embedded content
+
+When embedded content is available, link realization automatically uses the
+embedded data instead of making additional HTTP requests:
+
+[example]
+====
+[source,ruby]
+----
+# Fetch products with embedded content
+products = register.fetch(:product_index, embed: true)
+
+# Get the first product link
+first_product_link = products.links.products.first
+
+# Realize the link - uses embedded data if available
+product = first_product_link.realize(parent_resource: products)
+# No HTTP request made if embedded data exists!
+----
+====
+
+=== Performance benefits
+
+==== General
+
+Using embed functionality can significantly improve performance by reducing
+the number of HTTP requests:
+
+[example]
+====
+[source,ruby]
+----
+# Without embed: Multiple HTTP requests
+products_index = register.fetch(:product_index)  # 1 request
+first_product = products_index.links.products.first.realize  # 2nd request
+second_product = products_index.links.products[1].realize    # 3rd request
+# Total: 3 HTTP requests
+
+# With embed: Single HTTP request
+products_index = register.fetch(:product_index, embed: true)  # 1 request
+first_product = products_index.links.products.first.realize(
+  parent_resource: products_index
+)  # No additional request - uses embedded data
+second_product = products_index.links.products[1].realize(
+  parent_resource: products_index
+)  # No additional request - uses embedded data
+# Total: 1 HTTP request
+----
+====
+
+=== Configuration examples
+
+==== W3C API style configuration
+
+[example]
+====
+[source,ruby]
+----
+# Configure multiple endpoints with parameter-based embed
+%i[specification_index group_index series_index].each do |endpoint_id|
+  register.add_endpoint(
+    id: endpoint_id,
+    type: :index,
+    url: "/#{endpoint_id.to_s.gsub('_', 's')}",
+    model: "#{endpoint_id.to_s.classify}".constantize,
+    embed_config: Lutaml::Hal::EndpointConfiguration.new(
+      mechanism: :parameter,
+      parameter_name: 'embed',
+      parameter_value: 'true'
+    )
+  )
+end
+----
+====
+
+==== Mixed mechanism configuration
+
+[example]
+====
+[source,ruby]
+----
+# Different endpoints can use different embed mechanisms
+register.add_endpoint(
+  id: :product_index,
+  type: :index,
+  url: '/products',
+  model: ProductIndex,
+  embed_config: Lutaml::Hal::EndpointConfiguration.new(
+    mechanism: :parameter,
+    parameter_name: 'embed',
+    parameter_value: 'true'
+  )
+)
+
+register.add_endpoint(
+  id: :category_index,
+  type: :index,
+  url: '/categories',
+  model: CategoryIndex,
+  embed_config: Lutaml::Hal::EndpointConfiguration.new(
+    mechanism: :header,
+    header_name: 'X-Include-Embedded',
+    header_value: 'categories'
+  )
+)
+----
+====
+
 == Next steps
 
 === General
@@ -785,9 +1038,9 @@ class must inherit from `Lutaml::Hal::Page`.
 Now that you understand how to define HAL resources and set up model
 registers, you're ready to learn about using these definitions at runtime:
 
-* link:runtime-usage-guide.adoc[Runtime Usage Guide] - Fetching resources,
+* link:runtime-usage-guide.adoc[Runtime usage guide] - Fetching resources,
   navigating links, and handling pagination
-* link:hal-links-reference.adoc[HAL Links Reference] - Advanced link
+* link:hal-links-reference.adoc[HAL links reference] - Advanced link
   configuration and customization
-* link:pagination-guide.adoc[Pagination Guide] - Comprehensive pagination
+* link:pagination-guide.adoc[Pagination guide] - Comprehensive pagination
   patterns and navigation

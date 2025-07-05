@@ -57,6 +57,30 @@ module Lutaml
         raise LinkResolutionError, "Resource not found: #{e.message}"
       end
 
+      # Make a GET request with custom headers
+      def get_with_headers(url, headers = {})
+        cache_key = "#{url}:#{headers.to_json}"
+
+        return @cache[cache_key] if @cache_enabled && @cache.key?(cache_key)
+
+        @last_response = @connection.get(url) do |req|
+          headers.each { |key, value| req.headers[key] = value }
+        end
+
+        response = handle_response(@last_response, url)
+
+        @cache[cache_key] = response if @cache_enabled
+        response
+      rescue Faraday::ConnectionFailed => e
+        raise ConnectionError, "Connection failed: #{e.message}"
+      rescue Faraday::TimeoutError => e
+        raise TimeoutError, "Request timed out: #{e.message}"
+      rescue Faraday::ParsingError => e
+        raise ParsingError, "Response parsing error: #{e.message}"
+      rescue Faraday::Adapter::Test::Stubs::NotFound => e
+        raise LinkResolutionError, "Resource not found: #{e.message}"
+      end
+
       private
 
       def create_connection

@@ -24,7 +24,12 @@ module Lutaml
       # This method will use the global register according to the source of the Link object.
       # If the Link does not have a register, a register needs to be provided explicitly
       # via the `register:` parameter.
-      def realize(register: nil)
+      def realize(register: nil, parent_resource: nil)
+        # First check if embedded content is available
+        if parent_resource && embedded_content = check_embedded_content(parent_resource, register)
+          return embedded_content
+        end
+
         register = find_register(register)
         raise "No register provided for link resolution (class: #{self.class}, href: #{href})" if register.nil?
 
@@ -33,6 +38,58 @@ module Lutaml
       end
 
       private
+
+      def check_embedded_content(parent_resource, register = nil)
+        return nil unless parent_resource.respond_to?(:embedded_data)
+
+        # Try to find embedded content that matches this link
+        # Look for embedded content by matching the link's key or href pattern
+        embedded_data = parent_resource.embedded_data
+        return nil unless embedded_data
+
+        # Try to find matching embedded content
+        # This is a simplified approach - in practice, you might need more sophisticated matching
+        embedded_data.each do |key, content|
+          # If content is an array, check if any item matches this link
+          if content.is_a?(Array)
+            matching_item = content.find { |item| matches_embedded_item?(item) }
+            if matching_item
+              return create_embedded_resource(matching_item, parent_resource, register)
+            end
+          elsif content.is_a?(Hash) && matches_embedded_item?(content)
+            return create_embedded_resource(content, parent_resource, register)
+          end
+        end
+
+        nil
+      end
+
+      def matches_embedded_item?(item)
+        return false unless item.is_a?(Hash)
+
+        # Check if the embedded item's self link matches this link's href
+        item_self_link = item.dig('_links', 'self', 'href')
+        return true if item_self_link == href
+
+        # Additional matching logic could be added here
+        false
+      end
+
+      def create_embedded_resource(embedded_item, parent_resource, register = nil)
+        # Get the register to determine the appropriate model class
+        register = find_register(register)
+        return nil unless register
+
+        # Try to find the model class for this href
+        href_path = href.sub(register.client.api_url, '') if register.client
+        model_class = register.send(:find_matching_model_class, href_path)
+        return nil unless model_class
+
+        # Create the resource from embedded data
+        resource = model_class.from_embedded(embedded_item, instance_variable_get("@#{Hal::REGISTER_ID_ATTR_NAME}"))
+        register.send(:mark_model_links_with_register, resource)
+        resource
+      end
 
       def find_register(explicit_register)
         return explicit_register if explicit_register

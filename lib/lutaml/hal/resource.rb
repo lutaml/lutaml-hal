@@ -13,6 +13,28 @@ module Lutaml
       # will be used to resolve links unless overriden in resource#realize()
       attr_accessor Hal::REGISTER_ID_ATTR_NAME.to_sym
 
+      # Access embedded data if available
+      def embedded_data
+        @_embedded
+      end
+
+      # Check if embedded data exists for a given key
+      def has_embedded?(key)
+        embedded_data&.key?(key.to_s)
+      end
+
+      # Get embedded content for a specific key
+      def get_embedded(key)
+        embedded_data&.[](key.to_s)
+      end
+
+      # Create a resource instance from embedded JSON data
+      def self.from_embedded(json_data, register_name = nil)
+        instance = from_json(json_data.to_json)
+        instance.instance_variable_set("@#{Hal::REGISTER_ID_ATTR_NAME}", register_name) if register_name
+        instance
+      end
+
       class << self
         attr_accessor :link_definitions
 

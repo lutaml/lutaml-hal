@@ -39,6 +39,10 @@ module Lutaml
 
         @model_registers.delete(name)
       end
+
+      def unregister(name)
+        delete(name)
+      end
     end
   end
 end
