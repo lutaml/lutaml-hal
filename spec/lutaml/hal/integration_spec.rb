@@ -74,7 +74,12 @@ RSpec.describe 'Lutaml::Hal::IntegrationSpec' do
         id: :spec_resource,
         type: :resource,
         url: '/specifications/{id}',
-        model: IntegrationSpec::Specification
+        model: IntegrationSpec::Specification,
+        parameters: [
+          Lutaml::Hal::EndpointParameter.path('id',
+                                              schema: { type: :string },
+                                              description: 'Specification identifier')
+        ]
       )
     end
   end

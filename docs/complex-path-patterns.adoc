@@ -8,6 +8,8 @@ demonstrating the full capabilities of the path matching system.
 
 == Deep nested resource hierarchies
 
+=== General
+
 For APIs with complex organizational structures, you can define deeply nested
 resource paths:
 
@@ -35,6 +37,8 @@ file = register.fetch(:organization_project_repository_file,
 
 == Version-aware API patterns
 
+=== General
+
 Handle API versioning and version-specific resources:
 
 [example]
@@ -47,7 +51,24 @@ register.add_endpoint(
   type: :index,
   url: '/api/v{version}/organizations/{org_id}/projects',
   model: ProjectCollection,
-  query_params: { 'status' => '{status}', 'page' => '{page}' }
+  parameters: [
+    Lutaml::Hal::EndpointParameter.path('version',
+      schema: { type: :string },
+      description: 'API version'
+    ),
+    Lutaml::Hal::EndpointParameter.path('org_id',
+      schema: { type: :string },
+      description: 'Organization identifier'
+    ),
+    Lutaml::Hal::EndpointParameter.query('status',
+      schema: { type: :string },
+      description: 'Project status filter'
+    ),
+    Lutaml::Hal::EndpointParameter.query('page',
+      schema: { type: :integer },
+      description: 'Page number'
+    )
+  ]
 )
 
 # Package version dependencies (addressing predecessor relationships)
@@ -55,7 +76,21 @@ register.add_endpoint(
   id: :package_version_predecessors,
   type: :index,
   url: '/api/v{api_version}/packages/{package_id}/versions/{version}/predecessors',
-  model: PackageVersionCollection
+  model: PackageVersionCollection,
+  parameters: [
+    Lutaml::Hal::EndpointParameter.path('api_version',
+      schema: { type: :string },
+      description: 'API version'
+    ),
+    Lutaml::Hal::EndpointParameter.path('package_id',
+      schema: { type: :string },
+      description: 'Package identifier'
+    ),
+    Lutaml::Hal::EndpointParameter.path('version',
+      schema: { type: :string },
+      description: 'Package version'
+    )
+  ]
 )
 
 # Usage examples
@@ -76,6 +111,8 @@ predecessors = register.fetch(:package_version_predecessors,
 
 == File system navigation patterns
 
+=== General
+
 For repository browsing and file system-like APIs (similar to GitHub's tree
 API):
 
@@ -89,7 +126,28 @@ register.add_endpoint(
   type: :index,
   url: '/repositories/{owner}/{repo}/tree/{ref}/contents/{path}',
   model: RepositoryContents,
-  query_params: { 'recursive' => '{recursive}' }
+  parameters: [
+    Lutaml::Hal::EndpointParameter.path('owner',
+      schema: { type: :string },
+      description: 'Repository owner'
+    ),
+    Lutaml::Hal::EndpointParameter.path('repo',
+      schema: { type: :string },
+      description: 'Repository name'
+    ),
+    Lutaml::Hal::EndpointParameter.path('ref',
+      schema: { type: :string },
+      description: 'Git reference (branch, tag, or commit)'
+    ),
+    Lutaml::Hal::EndpointParameter.path('path',
+      schema: { type: :string },
+      description: 'File or directory path'
+    ),
+    Lutaml::Hal::EndpointParameter.query('recursive',
+      schema: { type: :string },
+      description: 'Include subdirectories recursively'
+    )
+  ]
 )
 
 # Source code file with line range support
@@ -98,7 +156,32 @@ register.add_endpoint(
   type: :resource,
   url: '/repositories/{owner}/{repo}/blob/{ref}/{file_path}',
   model: SourceFile,
-  query_params: { 'lines' => '{line_range}', 'highlight' => '{highlight_syntax}' }
+  parameters: [
+    Lutaml::Hal::EndpointParameter.path('owner',
+      schema: { type: :string },
+      description: 'Repository owner'
+    ),
+    Lutaml::Hal::EndpointParameter.path('repo',
+      schema: { type: :string },
+      description: 'Repository name'
+    ),
+    Lutaml::Hal::EndpointParameter.path('ref',
+      schema: { type: :string },
+      description: 'Git reference (branch, tag, or commit)'
+    ),
+    Lutaml::Hal::EndpointParameter.path('file_path',
+      schema: { type: :string },
+      description: 'Path to the source file'
+    ),
+    Lutaml::Hal::EndpointParameter.query('line_range',
+      schema: { type: :string },
+      description: 'Line range to display (e.g., "10-50")'
+    ),
+    Lutaml::Hal::EndpointParameter.query('highlight_syntax',
+      schema: { type: :string },
+      description: 'Syntax highlighting language'
+    )
+  ]
 )
 
 # Usage examples
@@ -123,6 +206,8 @@ source = register.fetch(:source_file_lines,
 
 == Advanced search and filtering
 
+=== General
+
 Complex search endpoints with multiple query parameters:
 
 [example]
@@ -135,16 +220,40 @@ register.add_endpoint(
   type: :index,
   url: '/search/repositories',
   model: RepositorySearchResults,
-  query_params: {
-    'q' => '{query}',
-    'sort' => '{sort_field}',
-    'order' => '{sort_order}',
-    'language' => '{language}',
-    'size' => '{size_range}',
-    'created' => '{created_date}',
-    'per_page' => '{per_page}',
-    'page' => '{page}'
-  }
+  parameters: [
+    Lutaml::Hal::EndpointParameter.query('query',
+      schema: { type: :string },
+      description: 'Search query'
+    ),
+    Lutaml::Hal::EndpointParameter.query('sort_field',
+      schema: { type: :string },
+      description: 'Sort field'
+    ),
+    Lutaml::Hal::EndpointParameter.query('sort_order',
+      schema: { type: :string },
+      description: 'Sort order'
+    ),
+    Lutaml::Hal::EndpointParameter.query('language',
+      schema: { type: :string },
+      description: 'Programming language filter'
+    ),
+    Lutaml::Hal::EndpointParameter.query('size_range',
+      schema: { type: :string },
+      description: 'Repository size range'
+    ),
+    Lutaml::Hal::EndpointParameter.query('created_date',
+      schema: { type: :string },
+      description: 'Creation date filter'
+    ),
+    Lutaml::Hal::EndpointParameter.query('per_page',
+      schema: { type: :integer },
+      description: 'Results per page'
+    ),
+    Lutaml::Hal::EndpointParameter.query('page',
+      schema: { type: :integer },
+      description: 'Page number'
+    )
+  ]
 )
 
 # Code search within repositories
@@ -153,15 +262,36 @@ register.add_endpoint(
   type: :index,
   url: '/search/code',
   model: CodeSearchResults,
-  query_params: {
-    'q' => '{query}',
-    'repo' => '{repository}',
-    'language' => '{language}',
-    'filename' => '{filename}',
-    'extension' => '{file_extension}',
-    'size' => '{file_size}',
-    'path' => '{path_filter}'
-  }
+  parameters: [
+    Lutaml::Hal::EndpointParameter.query('query',
+      schema: { type: :string },
+      description: 'Search query'
+    ),
+    Lutaml::Hal::EndpointParameter.query('repository',
+      schema: { type: :string },
+      description: 'Repository filter'
+    ),
+    Lutaml::Hal::EndpointParameter.query('language',
+      schema: { type: :string },
+      description: 'Programming language filter'
+    ),
+    Lutaml::Hal::EndpointParameter.query('filename',
+      schema: { type: :string },
+      description: 'Filename filter'
+    ),
+    Lutaml::Hal::EndpointParameter.query('file_extension',
+      schema: { type: :string },
+      description: 'File extension filter'
+    ),
+    Lutaml::Hal::EndpointParameter.query('file_size',
+      schema: { type: :string },
+      description: 'File size filter'
+    ),
+    Lutaml::Hal::EndpointParameter.query('path_filter',
+      schema: { type: :string },
+      description: 'Path filter'
+    )
+  ]
 )
 
 # Usage examples
@@ -187,6 +317,8 @@ code = register.fetch(:code_search,
 
 == Multi-tenant and scoped resources
 
+=== General
+
 Handle multi-tenant applications with complex scoping:
 
 [example]
@@ -199,14 +331,44 @@ register.add_endpoint(
   type: :index,
   url: '/tenants/{tenant_id}/users/{user_id}/workspaces/{workspace_id}/documents',
   model: DocumentCollection,
-  query_params: {
-    'type' => '{document_type}',
-    'status' => 'published',
-    'tags' => '{tags}',
-    'modified_since' => '{modified_date}',
-    'sort' => '{sort_field}',
-    'page' => '{page}'
-  }
+  parameters: [
+    Lutaml::Hal::EndpointParameter.path('tenant_id',
+      schema: { type: :string },
+      description: 'Tenant identifier'
+    ),
+    Lutaml::Hal::EndpointParameter.path('user_id',
+      schema: { type: :string },
+      description: 'User identifier'
+    ),
+    Lutaml::Hal::EndpointParameter.path('workspace_id',
+      schema: { type: :string },
+      description: 'Workspace identifier'
+    ),
+    Lutaml::Hal::EndpointParameter.query('document_type',
+      schema: { type: :string },
+      description: 'Document type filter'
+    ),
+    Lutaml::Hal::EndpointParameter.query('status',
+      schema: { type: :string, default: 'published' },
+      description: 'Document status filter'
+    ),
+    Lutaml::Hal::EndpointParameter.query('tags',
+      schema: { type: :string },
+      description: 'Tag filter'
+    ),
+    Lutaml::Hal::EndpointParameter.query('modified_date',
+      schema: { type: :string },
+      description: 'Modified since date'
+    ),
+    Lutaml::Hal::EndpointParameter.query('sort_field',
+      schema: { type: :string },
+      description: 'Sort field'
+    ),
+    Lutaml::Hal::EndpointParameter.query('page',
+      schema: { type: :integer },
+      description: 'Page number'
+    )
+  ]
 )
 
 # Cross-tenant resource relationships
@@ -215,11 +377,28 @@ register.add_endpoint(
   type: :index,
   url: '/tenants/{tenant_id}/resources/{resource_id}/dependencies',
   model: ResourceDependencyCollection,
-  query_params: {
-    'type' => '{dependency_type}',
-    'scope' => '{scope}',
-    'include_external' => '{include_external}'
-  }
+  parameters: [
+    Lutaml::Hal::EndpointParameter.path('tenant_id',
+      schema: { type: :string },
+      description: 'Tenant identifier'
+    ),
+    Lutaml::Hal::EndpointParameter.path('resource_id',
+      schema: { type: :string },
+      description: 'Resource identifier'
+    ),
+    Lutaml::Hal::EndpointParameter.query('dependency_type',
+      schema: { type: :string },
+      description: 'Dependency type filter'
+    ),
+    Lutaml::Hal::EndpointParameter.query('scope',
+      schema: { type: :string },
+      description: 'Dependency scope filter'
+    ),
+    Lutaml::Hal::EndpointParameter.query('include_external',
+      schema: { type: :string },
+      description: 'Include external dependencies'
+    )
+  ]
 )
 
 # Usage examples
@@ -245,6 +424,8 @@ dependencies = register.fetch(:tenant_resource_dependencies,
 ====
 
 == Pattern matching benefits
+
+=== General
 
 These complex patterns demonstrate several key capabilities:
 

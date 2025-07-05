@@ -39,7 +39,12 @@ RSpec.describe Lutaml::Hal::Page do
         id: :page_resource,
         type: :resource,
         url: '/sample_pages/{page}',
-        model: PageSpec::PageModel
+        model: PageSpec::PageModel,
+        parameters: [
+          Lutaml::Hal::EndpointParameter.path('page',
+                                              schema: { type: :integer },
+                                              description: 'Page number')
+        ]
       )
     end
   end

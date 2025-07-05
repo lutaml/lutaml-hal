@@ -20,10 +20,10 @@ navigation methods.
 
 Key pagination concepts:
 
-* **Page attributes**: Current page, total pages, items per page, total items
-* **Navigation links**: Self, first, last, next, previous page links
-* **Convenience methods**: Helper methods for checking navigation availability
-* **Batch processing**: Patterns for processing all pages efficiently
+* Automatic link set and link class generation
+* Lazy class resolution for dynamic loading scenarios
+* Custom link and link set classes for specialized behavior
+* Type-safe link realization with proper error handling
 
 == Defining page models
 
@@ -135,12 +135,24 @@ register.add_endpoint(
   type: :index,
   url: '/products',
   model: ProductIndex,
-  query_params: {
-    'page' => '{page}',
-    'limit' => '{limit}',
-    'sort' => '{sort}',
-    'filter' => '{filter}'
-  }
+  parameters: [
+    Lutaml::Hal::EndpointParameter.query('page',
+      schema: { type: :integer },
+      description: 'Page number'
+    ),
+    Lutaml::Hal::EndpointParameter.query('limit',
+      schema: { type: :integer },
+      description: 'Items per page'
+    ),
+    Lutaml::Hal::EndpointParameter.query('sort',
+      schema: { type: :string },
+      description: 'Sort order'
+    ),
+    Lutaml::Hal::EndpointParameter.query('filter',
+      schema: { type: :string },
+      description: 'Filter criteria'
+    )
+  ]
 )
 
 # Fetch specific page
@@ -784,11 +796,11 @@ end
 
 Now that you understand pagination thoroughly, explore these related topics:
 
-* link:runtime-usage-guide.adoc[Runtime Usage Guide] - Advanced fetching
+* link:runtime-usage-guide.adoc[Runtime usage guide] - Advanced fetching
   patterns and error handling
-* link:hal-links-reference.adoc[HAL Links Reference] - Customizing pagination
+* link:hal-links-reference.adoc[HAL links reference] - Customizing pagination
   link behavior
-* link:complex-path-patterns.adoc[Complex Path Patterns] - Advanced URL
+* link:complex-path-patterns.adoc[Complex path patterns] - Advanced URL
   patterns for pagination endpoints
 
 For basic pagination setup, refer to the

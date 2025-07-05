@@ -46,8 +46,9 @@ $ gem install lutaml-hal
 
 === General
 
-This tutorial walks through creating a simple product catalog API client. We'll
-define a product resource, set up API endpoints, and fetch data from a HAL API.
+This tutorial walks through creating a simple product catalog API client.
+We'll define a product resource, set up API endpoints, and fetch data from a
+HAL API.
 
 === Step 1: Define your first HAL resource
 
@@ -280,11 +281,11 @@ The `lutaml-hal` workflow follows a two-phase approach:
 Now that you understand the basics, you're ready to explore more advanced
 features:
 
-* link:data-definition-guide.adoc[Data Definition Guide] - Comprehensive model
+* link:data-definition-guide.adoc[Data definition guide] - Comprehensive model
   setup and advanced resource configuration
-* link:runtime-usage-guide.adoc[Runtime Usage Guide] - Advanced fetching
+* link:runtime-usage-guide.adoc[Runtime usage guide] - Advanced fetching
   patterns and navigation techniques
-* link:pagination-guide.adoc[Pagination Guide] - Working with paginated APIs
+* link:pagination-guide.adoc[Pagination guide] - Working with paginated APIs
   and large datasets
 
 == Common patterns
@@ -319,11 +320,20 @@ register.add_endpoint(
   type: :index,
   url: '/products',
   model: MyApi::Product,
-  query_params: {
-    'category' => '{category}',
-    'page' => '{page}',
-    'limit' => '{limit}'
-  }
+  parameters: [
+    Lutaml::Hal::EndpointParameter.query('category',
+      schema: { type: :string },
+      description: 'Product category filter'
+    ),
+    Lutaml::Hal::EndpointParameter.query('page',
+      schema: { type: :integer },
+      description: 'Page number'
+    ),
+    Lutaml::Hal::EndpointParameter.query('limit',
+      schema: { type: :integer },
+      description: 'Results per page'
+    )
+  ]
 )
 
 # Use with parameters

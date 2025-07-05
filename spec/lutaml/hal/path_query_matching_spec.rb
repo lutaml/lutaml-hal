@@ -44,7 +44,12 @@ RSpec.describe 'Path and Query Parameter Matching' do
           id: :user,
           type: :get,
           url: '/users/{id}',
-          model: 'User'
+          model: 'User',
+          parameters: [
+            Lutaml::Hal::EndpointParameter.path('id',
+                                                schema: { type: :string },
+                                                description: 'User identifier')
+          ]
         )
 
         result = register.send(:find_matching_model_class, '/users/123')
@@ -57,7 +62,15 @@ RSpec.describe 'Path and Query Parameter Matching' do
           id: :user_post,
           type: :get,
           url: '/users/{user_id}/posts/{post_id}',
-          model: 'Post'
+          model: 'Post',
+          parameters: [
+            Lutaml::Hal::EndpointParameter.path('user_id',
+                                                schema: { type: :string },
+                                                description: 'User identifier'),
+            Lutaml::Hal::EndpointParameter.path('post_id',
+                                                schema: { type: :string },
+                                                description: 'Post identifier')
+          ]
         )
 
         result = register.send(:find_matching_model_class, '/users/123/posts/456')
@@ -70,7 +83,12 @@ RSpec.describe 'Path and Query Parameter Matching' do
           id: :user,
           type: :get,
           url: '/users/{id}',
-          model: 'User'
+          model: 'User',
+          parameters: [
+            Lutaml::Hal::EndpointParameter.path('id',
+                                                schema: { type: :string },
+                                                description: 'User identifier')
+          ]
         )
 
         # Should not match because {id} should only match a single segment
@@ -83,7 +101,12 @@ RSpec.describe 'Path and Query Parameter Matching' do
           id: :user_posts,
           type: :get,
           url: '/users/{user_id}/posts',
-          model: 'PostCollection'
+          model: 'PostCollection',
+          parameters: [
+            Lutaml::Hal::EndpointParameter.path('user_id',
+                                                schema: { type: :string },
+                                                description: 'User identifier')
+          ]
         )
 
         result = register.send(:find_matching_model_class, '/users/123/posts')
@@ -147,7 +170,11 @@ RSpec.describe 'Path and Query Parameter Matching' do
           type: :get,
           url: '/users',
           model: 'UserCollection',
-          query_params: { 'page' => '{page}' }
+          parameters: [
+            Lutaml::Hal::EndpointParameter.query('page',
+                                                 schema: { type: :integer },
+                                                 description: 'Page number')
+          ]
         )
 
         # Should match with page parameter
@@ -167,7 +194,14 @@ RSpec.describe 'Path and Query Parameter Matching' do
           type: :get,
           url: '/users',
           model: 'UserCollection',
-          query_params: { 'page' => '{page}', 'limit' => '{limit}' }
+          parameters: [
+            Lutaml::Hal::EndpointParameter.query('page',
+                                                 schema: { type: :integer },
+                                                 description: 'Page number'),
+            Lutaml::Hal::EndpointParameter.query('limit',
+                                                 schema: { type: :integer },
+                                                 description: 'Items per page')
+          ]
         )
 
         # Should match with both parameters
@@ -194,7 +228,12 @@ RSpec.describe 'Path and Query Parameter Matching' do
           type: :get,
           url: '/users',
           model: 'ActiveUserCollection',
-          query_params: { 'status' => 'active' }
+          parameters: [
+            Lutaml::Hal::EndpointParameter.query('status',
+                                                 schema: { type: :string, enum: ['active'] },
+                                                 description: 'User status filter',
+                                                 required: true)
+          ]
         )
 
         # Should match with exact parameter value
@@ -217,7 +256,15 @@ RSpec.describe 'Path and Query Parameter Matching' do
           type: :get,
           url: '/users',
           model: 'ActiveUserCollection',
-          query_params: { 'status' => 'active', 'page' => '{page}' }
+          parameters: [
+            Lutaml::Hal::EndpointParameter.query('status',
+                                                 schema: { type: :string, enum: ['active'] },
+                                                 description: 'User status filter',
+                                                 required: true),
+            Lutaml::Hal::EndpointParameter.query('page',
+                                                 schema: { type: :integer },
+                                                 description: 'Page number')
+          ]
         )
 
         # Should match with both parameters
@@ -244,7 +291,18 @@ RSpec.describe 'Path and Query Parameter Matching' do
         type: :get,
         url: '/users/{user_id}/posts',
         model: 'PostCollection',
-        query_params: { 'page' => '{page}', 'status' => 'published' }
+        parameters: [
+          Lutaml::Hal::EndpointParameter.path('user_id',
+                                              schema: { type: :string },
+                                              description: 'User identifier'),
+          Lutaml::Hal::EndpointParameter.query('page',
+                                               schema: { type: :integer },
+                                               description: 'Page number'),
+          Lutaml::Hal::EndpointParameter.query('status',
+                                               schema: { type: :string, enum: ['published'] },
+                                               description: 'Post status filter',
+                                               required: true)
+        ]
       )
 
       # Should match with all parameters
@@ -310,7 +368,12 @@ RSpec.describe 'Path and Query Parameter Matching' do
         id: :user,
         type: :get,
         url: '/users/{id}',
-        model: 'User'
+        model: 'User',
+        parameters: [
+          Lutaml::Hal::EndpointParameter.path('id',
+                                              schema: { type: :string },
+                                              description: 'User identifier')
+        ]
       )
 
       # Should handle URL-encoded characters
@@ -325,7 +388,11 @@ RSpec.describe 'Path and Query Parameter Matching' do
         type: :get,
         url: '/users',
         model: 'UserCollection',
-        query_params: { 'page' => '{page}' }
+        parameters: [
+          Lutaml::Hal::EndpointParameter.query('page',
+                                               schema: { type: :integer },
+                                               description: 'Page number')
+        ]
       )
 
       result = register.send(:find_matching_model_class, '/users?')
@@ -339,7 +406,11 @@ RSpec.describe 'Path and Query Parameter Matching' do
         type: :get,
         url: '/users',
         model: 'UserCollection',
-        query_params: { 'page' => '{page}' }
+        parameters: [
+          Lutaml::Hal::EndpointParameter.query('page',
+                                               schema: { type: :integer },
+                                               description: 'Page number')
+        ]
       )
 
       # Should not crash on malformed query string
@@ -380,7 +451,11 @@ RSpec.describe 'Path and Query Parameter Matching' do
           type: :get,
           url: '/users',
           model: 'UserCollection',
-          query_params: { 'page' => '{page}' }
+          parameters: [
+            Lutaml::Hal::EndpointParameter.query('page',
+                                                 schema: { type: :integer },
+                                                 description: 'Page number')
+          ]
         )
       end.not_to raise_error
     end
@@ -401,21 +476,38 @@ RSpec.describe 'Path and Query Parameter Matching' do
         type: :get,
         url: '/users',
         model: 'UserCollection',
-        query_params: { 'page' => '{page}', 'per_page' => '{per_page}' }
+        parameters: [
+          Lutaml::Hal::EndpointParameter.query('page',
+                                               schema: { type: :integer },
+                                               description: 'Page number'),
+          Lutaml::Hal::EndpointParameter.query('per_page',
+                                               schema: { type: :integer },
+                                               description: 'Items per page')
+        ]
       )
 
       register.add_endpoint(
         id: :user_show,
         type: :get,
         url: '/users/{id}',
-        model: 'User'
+        model: 'User',
+        parameters: [
+          Lutaml::Hal::EndpointParameter.path('id',
+                                              schema: { type: :string },
+                                              description: 'User identifier')
+        ]
       )
 
       register.add_endpoint(
         id: :user_posts,
         type: :get,
         url: '/users/{user_id}/posts',
-        model: 'PostCollection'
+        model: 'PostCollection',
+        parameters: [
+          Lutaml::Hal::EndpointParameter.path('user_id',
+                                              schema: { type: :string },
+                                              description: 'User identifier')
+        ]
       )
 
       register.add_endpoint(
@@ -423,14 +515,33 @@ RSpec.describe 'Path and Query Parameter Matching' do
         type: :get,
         url: '/users/{user_id}/posts',
         model: 'PostCollection',
-        query_params: { 'status' => 'published', 'page' => '{page}' }
+        parameters: [
+          Lutaml::Hal::EndpointParameter.path('user_id',
+                                              schema: { type: :string },
+                                              description: 'User identifier'),
+          Lutaml::Hal::EndpointParameter.query('status',
+                                               schema: { type: :string, enum: ['published'] },
+                                               description: 'Post status filter',
+                                               required: true),
+          Lutaml::Hal::EndpointParameter.query('page',
+                                               schema: { type: :integer },
+                                               description: 'Page number')
+        ]
       )
 
       register.add_endpoint(
         id: :post_show,
         type: :get,
         url: '/users/{user_id}/posts/{id}',
-        model: 'Post'
+        model: 'Post',
+        parameters: [
+          Lutaml::Hal::EndpointParameter.path('user_id',
+                                              schema: { type: :string },
+                                              description: 'User identifier'),
+          Lutaml::Hal::EndpointParameter.path('id',
+                                              schema: { type: :string },
+                                              description: 'Post identifier')
+        ]
       )
     end
 

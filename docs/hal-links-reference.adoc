@@ -692,9 +692,9 @@ end
 
 Now that you understand HAL links in detail, explore these related topics:
 
-* link:pagination-guide.adoc[Pagination Guide] - Using links for pagination
+* link:pagination-guide.adoc[Pagination guide] - Using links for pagination
   navigation
-* link:runtime-usage-guide.adoc[Runtime Usage Guide] - Practical link
+* link:runtime-usage-guide.adoc[Runtime usage guide] - Practical link
   realization patterns
-* link:complex-path-patterns.adoc[Complex Path Patterns] - Advanced URL
+* link:complex-path-patterns.adoc[Complex path patterns] - Advanced URL
   patterns for sophisticated APIs

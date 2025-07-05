@@ -1,10 +1,12 @@
 # frozen_string_literal: true
 
+require 'cgi'
 require_relative 'errors'
+require_relative 'endpoint_configuration'
 
 module Lutaml
   module Hal
-    # Register to map URL patterns to model classes
+    # Register to map URL patterns to model classes with EndpointParameter support
     class ModelRegister
       attr_accessor :models, :client, :register_name
 
@@ -15,12 +17,22 @@ module Lutaml
         @models = {}
       end
 
-      # Register a model with its base URL pattern
-      def add_endpoint(id:, type:, url:, model:, query_params: nil)
+      # Register a model with its URL pattern and parameters
+      def add_endpoint(id:, type:, url:, model:, parameters: [])
         @models ||= {}
 
         raise "Model with ID #{id} already registered" if @models[id]
-        if @models.values.any? { |m| m[:url] == url && m[:type] == type && m[:query_params] == query_params }
+
+        # Validate all parameters
+        parameters.each(&:validate!)
+
+        # Ensure path parameters in URL have corresponding parameter definitions
+        validate_path_parameters(url, parameters)
+
+        # Check for duplicate endpoints
+        if @models.values.any? do |m|
+          m[:url] == url && m[:type] == type && parameters_match?(m[:parameters], parameters)
+        end
           raise "Duplicate URL pattern #{url} for type #{type}"
         end
 
@@ -29,8 +41,24 @@ module Lutaml
           type: type,
           url: url,
           model: model,
-          query_params: query_params
+          parameters: parameters
         }
+      end
+
+      # Register an endpoint using block configuration syntax
+      def register_endpoint(id, model, type: :index, &block)
+        config = EndpointConfiguration.new
+        yield(config) if block_given?
+
+        raise ArgumentError, 'Endpoint path must be configured' unless config.endpoint_path
+
+        add_endpoint(
+          id: id,
+          type: type,
+          url: config.endpoint_path,
+          model: model,
+          parameters: config.parameters || []
+        )
       end
 
       # Resolve and cast data to the appropriate model based on URL
@@ -38,10 +66,26 @@ module Lutaml
         endpoint = @models[endpoint_id] || raise("Unknown endpoint: #{endpoint_id}")
         raise 'Client not configured' unless client
 
-        url = interpolate_url(endpoint[:url], params)
-        response = client.get(build_url_with_query_params(url, endpoint[:query_params], params))
+        # Process parameters through EndpointParameter objects
+        processed_params = process_parameters(endpoint[:parameters], params)
+
+        # Build URL with path parameters
+        url = build_url_with_path_params(endpoint[:url], processed_params[:path])
+
+        # Add query parameters
+        final_url = build_url_with_query_params(url, processed_params[:query])
+
+        # Make request with headers
+        response = if processed_params[:headers].any?
+                     client.get_with_headers(final_url, processed_params[:headers])
+                   else
+                     client.get(final_url)
+                   end
 
         realized_model = endpoint[:model].from_json(response.to_json)
+
+        # Store embedded data for later resolution
+        realized_model.instance_variable_set(:@_embedded, response['_embedded']) if response['_embedded']
 
         mark_model_links_with_register(realized_model)
         realized_model
@@ -98,35 +142,116 @@ module Lutaml
 
       private
 
+      def process_parameters(parameter_definitions, provided_params)
+        result = { path: {}, query: {}, headers: {}, cookies: {} }
+
+        parameter_definitions.each do |param_def|
+          param_name = param_def.name.to_sym
+          provided_value = provided_params[param_name]
+
+          # Check required parameters
+          if param_def.required && provided_value.nil?
+            raise ArgumentError, "Required parameter '#{param_def.name}' is missing"
+          end
+
+          # Use default value if not provided
+          value = provided_value || param_def.default_value
+
+          # Skip if still nil and not required
+          next if value.nil?
+
+          # Validate parameter value
+          unless param_def.validate_value(value)
+            raise ArgumentError, "Invalid value for parameter '#{param_def.name}': #{value}"
+          end
+
+          # Store in appropriate category
+          case param_def.location
+          when :path
+            result[:path][param_def.name] = value
+          when :query
+            result[:query][param_def.name] = value
+          when :header
+            result[:headers][param_def.name] = value
+          when :cookie
+            result[:cookies][param_def.name] = value
+          end
+        end
+
+        result
+      end
+
+      def validate_path_parameters(url, parameters)
+        # Extract path parameter names from URL template
+        url_params = url.scan(/\{([^}]+)\}/).flatten
+
+        # Find path parameters in parameter definitions
+        path_params = parameters.select(&:path_parameter?).map(&:name)
+
+        # Check that all URL parameters have definitions
+        missing_params = url_params - path_params
+        unless missing_params.empty?
+          raise ArgumentError, "URL contains undefined path parameters: #{missing_params.join(', ')}"
+        end
+
+        # Check that all path parameter definitions are used in URL
+        unused_params = path_params - url_params
+        return if unused_params.empty?
+
+        raise ArgumentError, "Path parameters defined but not used in URL: #{unused_params.join(', ')}"
+      end
+
+      def parameters_match?(params1, params2)
+        return true if params1.nil? && params2.nil?
+        return false if params1.nil? || params2.nil?
+        return false if params1.length != params2.length
+
+        params1.zip(params2).all? do |p1, p2|
+          p1.name == p2.name && p1.location == p2.location
+        end
+      end
+
+      def build_url_with_path_params(url_template, path_params)
+        path_params.reduce(url_template) do |url, (key, value)|
+          url.gsub("{#{key}}", value.to_s)
+        end
+      end
+
+      def build_url_with_query_params(base_url, query_params, params = nil)
+        # Handle both 2-argument and 3-argument calls for backward compatibility
+        if params.nil?
+          # 2-argument call: query_params is the final query parameters
+          final_query_params = query_params
+        else
+          # 3-argument call: query_params is template, params contains values
+          final_query_params = {}
+          query_params.each do |key, template_value|
+            if template_value.is_a?(String) && template_value.match?(/\{(\w+)\}/)
+              param_name = template_value.match(/\{(\w+)\}/)[1].to_sym
+              final_query_params[key] = params[param_name] if params[param_name]
+            else
+              final_query_params[key] = template_value
+            end
+          end
+        end
+
+        return base_url if final_query_params.empty?
+
+        query_string = final_query_params.map { |key, value| "#{key}=#{CGI.escape(value.to_s)}" }.join('&')
+        "#{base_url}?#{query_string}"
+      end
+
+      # Interpolate path parameters in a URL template
       def interpolate_url(url_template, params)
         params.reduce(url_template) do |url, (key, value)|
           url.gsub("{#{key}}", value.to_s)
         end
       end
 
-      def build_url_with_query_params(base_url, query_params_template, params)
-        return base_url unless query_params_template
-
-        query_params = []
-        query_params_template.each do |param_name, param_template|
-          # If the template is like {page}, look for the param in the passed params
-          if param_template.is_a?(String) && param_template.match?(/\{(.+)\}/)
-            param_key = param_template.match(/\{(.+)\}/)[1]
-            query_params << "#{param_name}=#{params[param_key.to_sym]}" if params[param_key.to_sym]
-          else
-            # Fixed parameter - always include it
-            query_params << "#{param_name}=#{param_template}"
-          end
-        end
-
-        query_params.any? ? "#{base_url}?#{query_params.join('&')}" : base_url
-      end
-
       def find_matching_model_class(href)
         # Find all matching patterns and select the most specific one (longest pattern)
         matching_models = @models.values.select do |model_data|
-          matches = matches_url_with_params?(model_data, href)
-          matches
+          matches_url_with_params?(model_data, href)
         end
 
         return nil if matching_models.empty?
@@ -139,7 +264,7 @@ module Lutaml
 
       def matches_url_with_params?(model_data, href)
         pattern = model_data[:url]
-        query_params = model_data[:query_params]
+        parameters = model_data[:parameters]
 
         return false unless pattern && href
 
@@ -149,7 +274,9 @@ module Lutaml
         path_match_result = path_matches?(pattern_path, uri.path)
         return false unless path_match_result
 
-        return true unless query_params
+        # Check query parameters if any are defined
+        query_params = parameters.select(&:query_parameter?)
+        return true if query_params.empty?
 
         parsed_query = parse_query_params(uri.query)
         query_params_match?(query_params, parsed_query)
@@ -169,24 +296,23 @@ module Lutaml
       end
 
       def query_params_match?(expected_params, actual_params)
-        # Query parameters should be optional - if they're template parameters (like {page}),
-        # they don't need to be present in the actual URL
-        expected_params.all? do |param_name, param_pattern|
-          actual_value = actual_params[param_name]
+        # Query parameters should be optional unless marked as required
+        expected_params.all? do |param_def|
+          actual_value = actual_params[param_def.name]
 
-          # If it's a template parameter (like {page}), it's optional
-          if template_param?(param_pattern)
-            # Template parameters are always considered matching (they're optional)
-            true
-          else
-            # Non-template parameters must match exactly if present
-            actual_value == param_pattern.to_s
+          # Required parameters must be present
+          if param_def.required
+            return false if actual_value.nil?
+
+            return param_def.validate_value(actual_value)
           end
-        end
-      end
 
-      def template_param?(param_pattern)
-        param_pattern.is_a?(String) && param_pattern.match?(/\{.+\}/)
+          # Optional parameters are always considered matching if not present
+          return true if actual_value.nil?
+
+          # If present, they must be valid
+          param_def.validate_value(actual_value)
+        end
       end
 
       def parse_query_params(query_string)
@@ -194,30 +320,11 @@ module Lutaml
 
         query_string.split('&').each_with_object({}) do |param, hash|
           key, value = param.split('=', 2)
-          hash[key] = value if key
+          hash[key] = CGI.unescape(value) if key && value
         end
       end
 
-      def matches_url?(pattern, href)
-        return false unless pattern && href
-
-        if href.start_with?('/') && client&.api_url
-          # Try both with and without the API endpoint prefix
-          path_pattern = extract_path(pattern)
-          return pattern_match?(path_pattern, href) ||
-                 pattern_match?(pattern, "#{client.api_url}#{href}")
-        end
-
-        pattern_match?(pattern, href)
-      end
-
-      def extract_path(pattern)
-        return pattern unless client&.api_url && pattern.start_with?(client.api_url)
-
-        pattern.sub(client.api_url, '')
-      end
-
-      # Match URL pattern (supports * wildcards and {param} templates)
+      # Match URL pattern (supports {param} templates)
       def pattern_match?(pattern, url)
         return false unless pattern && url
 

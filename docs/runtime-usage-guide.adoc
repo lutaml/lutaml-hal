@@ -437,6 +437,192 @@ page_2 = page_1.links.next.realize
 ----
 ====
 
+== Working with embedded content
+
+=== General
+
+HAL embed support allows you to fetch resources with embedded content in a
+single request, significantly reducing the number of HTTP requests needed.
+When embed is enabled for an endpoint, the API response includes related
+resources in the `_embedded` section.
+
+=== Fetching with embed support
+
+==== General
+
+To fetch a resource with embedded content, pass the `embed: true` parameter
+to the `fetch` method:
+
+[example]
+====
+[source,ruby]
+----
+# Fetch without embed (multiple requests needed for related data)
+products = register.fetch(:product_index)
+first_product = products.links.products.first.realize  # Additional HTTP request
+
+# Fetch with embed (single request includes related data)
+products = register.fetch(:product_index, embed: true)
+first_product = products.links.products.first.realize(parent_resource: products)
+# No additional HTTP request - uses embedded data!
+----
+====
+
+=== Checking for embedded content
+
+==== General
+
+Resources provide methods to check for and access embedded content:
+
+[example]
+====
+[source,ruby]
+----
+products = register.fetch(:product_index, embed: true)
+
+# Check if any embedded content exists
+if products.has_embedded?
+  puts "Resource has embedded content"
+end
+
+# Check for specific embedded content
+if products.has_embedded?('products')
+  puts "Products are embedded"
+end
+
+# Get all embedded content keys
+embedded_keys = products.embedded_keys
+puts "Available embedded content: #{embedded_keys.join(', ')}"
+
+# Access embedded content directly
+if products.has_embedded?('products')
+  embedded_products = products.get_embedded('products')
+  puts "Found #{embedded_products.length} embedded products"
+end
+----
+====
+
+=== Link realization with embedded content
+
+==== General
+
+When embedded content is available, link realization automatically uses the
+embedded data instead of making HTTP requests:
+
+[example]
+====
+[source,ruby]
+----
+# Fetch with embed enabled
+products = register.fetch(:product_index, embed: true)
+
+# Realize links using embedded content
+products.links.products.each do |product_link|
+  # Pass parent_resource to enable embedded content lookup
+  product = product_link.realize(parent_resource: products)
+  puts "Product: #{product.name} (from embedded data)"
+end
+
+# Without parent_resource, it will make HTTP requests
+product = products.links.products.first.realize  # Makes HTTP request
+----
+====
+
+=== Performance benefits
+
+==== General
+
+Using embed functionality provides significant performance improvements:
+
+[example]
+====
+[source,ruby]
+----
+# Without embed: Multiple HTTP requests
+start_time = Time.now
+products_index = register.fetch(:product_index)        # 1 request
+first_product = products_index.links.products.first.realize   # 2nd request
+second_product = products_index.links.products[1].realize     # 3rd request
+third_product = products_index.links.products[2].realize      # 4th request
+without_embed_time = Time.now - start_time
+puts "Without embed: #{without_embed_time}s (4 HTTP requests)"
+
+# With embed: Single HTTP request
+start_time = Time.now
+products_index = register.fetch(:product_index, embed: true)  # 1 request
+first_product = products_index.links.products.first.realize(
+  parent_resource: products_index
+)  # No additional request
+second_product = products_index.links.products[1].realize(
+  parent_resource: products_index
+)  # No additional request
+third_product = products_index.links.products[2].realize(
+  parent_resource: products_index
+)  # No additional request
+with_embed_time = Time.now - start_time
+puts "With embed: #{with_embed_time}s (1 HTTP request)"
+
+puts "Performance improvement: #{((without_embed_time - with_embed_time) / without_embed_time * 100).round(1)}%"
+----
+====
+
+=== Embed with pagination
+
+==== General
+
+Embed functionality works seamlessly with pagination:
+
+[example]
+====
+[source,ruby]
+----
+# Fetch first page with embedded content
+page_1 = register.fetch(:product_index, embed: true, page: 1, items: 10)
+
+# Process embedded products without additional requests
+page_1.links.products.each do |product_link|
+  product = product_link.realize(parent_resource: page_1)
+  puts "Processing: #{product.name}"
+end
+
+# Navigate to next page with embed
+if page_1.has_next?
+  page_2 = page_1.next_page.realize(embed: true)
+  # Process page 2 embedded products...
+end
+----
+====
+
+=== Conditional embed usage
+
+==== General
+
+You can conditionally use embed based on your application's needs:
+
+[example]
+====
+[source,ruby]
+----
+def fetch_products_efficiently(register, need_details: false)
+  if need_details
+    # Use embed when we need product details
+    products = register.fetch(:product_index, embed: true)
+    products.links.products.map do |link|
+      link.realize(parent_resource: products)
+    end
+  else
+    # Just fetch the index when we only need basic info
+    products = register.fetch(:product_index)
+    products.links.products  # Return links without realizing
+  end
+end
+
+# Usage
+product_links = fetch_products_efficiently(register, need_details: false)
+product_objects = fetch_products_efficiently(register, need_details: true)
+----
+====
+
 == Advanced runtime patterns
 
 === Error handling
@@ -565,13 +751,28 @@ register.add_endpoint(
   type: :index,
   url: '/products',
   model: ProductIndex,
-  query_params: {
-    'category' => '{category}',
-    'min_price' => '{min_price}',
-    'max_price' => '{max_price}',
-    'sort' => '{sort}',
-    'page' => '{page}'
-  }
+  parameters: [
+    Lutaml::Hal::EndpointParameter.query('category',
+      schema: { type: :string },
+      description: 'Product category filter'
+    ),
+    Lutaml::Hal::EndpointParameter.query('min_price',
+      schema: { type: :number },
+      description: 'Minimum price filter'
+    ),
+    Lutaml::Hal::EndpointParameter.query('max_price',
+      schema: { type: :number },
+      description: 'Maximum price filter'
+    ),
+    Lutaml::Hal::EndpointParameter.query('sort',
+      schema: { type: :string },
+      description: 'Sort order'
+    ),
+    Lutaml::Hal::EndpointParameter.query('page',
+      schema: { type: :integer },
+      description: 'Page number'
+    )
+  ]
 )
 
 # Search for electronics under $100, sorted by price
@@ -594,11 +795,11 @@ puts "Found #{results.total} products"
 
 Now that you understand runtime operations, explore these advanced topics:
 
-* link:pagination-guide.adoc[Pagination Guide] - Advanced pagination patterns
+* link:pagination-guide.adoc[Pagination guide] - Advanced pagination patterns
   and strategies
-* link:hal-links-reference.adoc[HAL Links Reference] - Customizing link
+* link:hal-links-reference.adoc[HAL links reference] - Customizing link
   behavior and attributes
-* link:complex-path-patterns.adoc[Complex Path Patterns] - Sophisticated URL
+* link:complex-path-patterns.adoc[Complex path patterns] - Sophisticated URL
   patterns for complex APIs
 
 For comprehensive examples combining data definition and runtime usage, see

@@ -1,0 +1,176 @@
+== Embedded resources
+
+=== General
+
+The HAL (Hypertext Application Language) specification defines two main types of
+things: resources and links.
+
+In HAL, resources are the primary objects that clients interact with, while
+links provide a way to navigate between related resources.
+
+Normally, the API access flow follows these steps:
+
+* When fetching a resource, clients may also need to retrieve related resources,
+which can result in multiple HTTP requests.
+
+* When fetching an index of resources, clients may need to retrieve each
+resource individually, leading to even more requests.
+
+This is why HAL introduces this concept of embedded resources, which is a way to
+include related resources directly within the response of a primary resource.
+This way the number of HTTP requests needed to retrieve all relevant data is
+reduced.
+
+=== Types of embedded resources
+
+Just as the above, there are two main types of embedded resources:
+
+* related embedded resources, where the related resources included are the
+content of the fetched single resource's links within the `_links` object
+is provided in the `_embedded` key;
+
+* indexed embedded resources, where the response provides an array of "links",
+each corresponding link object is also provided in the `_embedded` object.
+
+Furthermore, it is possible to have multiple levels of embedded resources,
+allowing for a rich representation of related data within a single API response.
+
+=== Implementation
+
+The library provides comprehensive support for HAL embedded resources to reduce
+HTTP requests and improve performance.
+
+The mechanism for handling embedded resources involves these steps:
+
+* During definition of the endpoint, indicate it supports embedding
+** Specify the embedding mechanism (e.g., parameter, URL, header, auto)
+
+* When issuing a request, indicate in the method call that embedding is desired
+(e.g., `embed: true`).
+
+* When processing the response, the library automatically extracts and makes
+  embedded content available to the client.
+
+It is important to note that not all endpoints may support embedding, and the
+availability of embedded content depends on the specific API implementation.
+
+Experimentation is almost certainly a friend.
+
+=== Configuring embed support
+
+Embed support is configured at the endpoint level using the `embed_config` option:
+
+[source,ruby]
+----
+# Parameter-based embed (most common)
+register.add_endpoint(
+  id: :product_index,
+  type: :index,
+  url: '/products',
+  model: ProductIndex,
+  embed_config: {
+    mechanism: :parameter,
+    parameter_name: 'embed',
+    parameter_value: 'true'
+  }
+)
+
+# URL-based embed
+register.add_endpoint(
+  id: :product_index,
+  type: :index,
+  url: '/products',
+  model: ProductIndex,
+  embed_config: {
+    mechanism: :url,
+    embed_url: '/products/embed'
+  }
+)
+
+# Header-based embed
+register.add_endpoint(
+  id: :product_index,
+  type: :index,
+  url: '/products',
+  model: ProductIndex,
+  embed_config: {
+    mechanism: :header,
+    header_name: 'X-Embed',
+    header_value: 'true'
+  }
+)
+
+# Auto embed (server always provides embedded content)
+register.add_endpoint(
+  id: :product_index,
+  type: :index,
+  url: '/products',
+  model: ProductIndex,
+  embed_config: {
+    mechanism: :auto
+  }
+)
+----
+
+
+=== Working with embedded resources
+
+Resources automatically support embedded content through the `_embedded` section:
+
+[source,ruby]
+----
+class ProductIndex < Lutaml::Hal::Resource
+  attribute :page, :integer
+  attribute :total, :integer
+
+  hal_link :products, key: 'products', realize_class: 'Product'
+
+  # Embedded content is automatically handled
+  def has_embedded?(key)
+    # Check if embedded content exists for the given key
+  end
+
+  def get_embedded(key)
+    # Get embedded content for the given key
+  end
+end
+
+# Fetch with embed enabled
+products = register.fetch(:product_index, embed: true)
+
+# Check for embedded content
+if products.has_embedded?('products')
+  embedded_products = products.get_embedded('products')
+  puts "Found #{embedded_products.length} embedded products"
+end
+
+# Link resolution automatically uses embedded content when available
+products.links.products.each do |product_link|
+  # This will use embedded data if available, otherwise make HTTP request
+  product = product_link.realize(parent_resource: products)
+  puts "#{product.name} - #{product.price}"
+end
+----
+
+
+=== Performance benefits
+
+Using embed can significantly reduce HTTP requests:
+
+[source,ruby]
+----
+# Without embed: 1 request for index + N requests for each product
+products = register.fetch(:product_index)
+products.links.products.each do |product_link|
+  product = product_link.realize  # Each call makes an HTTP request
+  puts product.name
+end
+
+# With embed: 1 request total, embedded data used automatically
+products = register.fetch(:product_index, embed: true)
+products.links.products.each do |product_link|
+  product = product_link.realize(parent_resource: products)  # Uses embedded data
+  puts product.name
+end
+----
+

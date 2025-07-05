@@ -15,6 +15,7 @@ end
 
 require_relative 'hal/version'
 require_relative 'hal/errors'
+require_relative 'hal/endpoint_parameter'
 require_relative 'hal/link'
 require_relative 'hal/link_set'
 require_relative 'hal/resource'
