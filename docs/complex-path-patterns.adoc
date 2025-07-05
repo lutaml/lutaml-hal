@@ -1,0 +1,262 @@
+= Complex path pattern examples
+
+== General
+
+The `lutaml-hal` library supports sophisticated path matching patterns that can
+handle complex API structures. This document provides advanced examples
+demonstrating the full capabilities of the path matching system.
+
+== Deep nested resource hierarchies
+
+For APIs with complex organizational structures, you can define deeply nested
+resource paths:
+
+[example]
+====
+[source,ruby]
+----
+# Multi-level organizational hierarchy
+register.add_endpoint(
+  id: :organization_project_repository_file,
+  type: :resource,
+  url: '/organizations/{org_id}/projects/{project_id}/repositories/{repo_id}/files/{file_path}',
+  model: RepositoryFile
+)
+
+# Usage example
+file = register.fetch(:organization_project_repository_file,
+                     org_id: 'acme-corp',
+                     project_id: 'web-platform',
+                     repo_id: 'frontend-app',
+                     file_path: 'src/components/Button.tsx')
+# => client.get('/organizations/acme-corp/projects/web-platform/repositories/frontend-app/files/src/components/Button.tsx')
+----
+====
+
+== Version-aware API patterns
+
+Handle API versioning and version-specific resources:
+
+[example]
+====
+[source,ruby]
+----
+# API versioning with nested resources
+register.add_endpoint(
+  id: :versioned_organization_projects,
+  type: :index,
+  url: '/api/v{version}/organizations/{org_id}/projects',
+  model: ProjectCollection,
+  query_params: { 'status' => '{status}', 'page' => '{page}' }
+)
+
+# Package version dependencies (addressing predecessor relationships)
+register.add_endpoint(
+  id: :package_version_predecessors,
+  type: :index,
+  url: '/api/v{api_version}/packages/{package_id}/versions/{version}/predecessors',
+  model: PackageVersionCollection
+)
+
+# Usage examples
+projects = register.fetch(:versioned_organization_projects,
+                         version: '2',
+                         org_id: 'tech-corp',
+                         status: 'active',
+                         page: 1)
+# => client.get('/api/v2/organizations/tech-corp/projects?status=active&page=1')
+
+predecessors = register.fetch(:package_version_predecessors,
+                             api_version: '1',
+                             package_id: 'lutaml-hal',
+                             version: '2.1.0')
+# => client.get('/api/v1/packages/lutaml-hal/versions/2.1.0/predecessors')
+----
+====
+
+== File system navigation patterns
+
+For repository browsing and file system-like APIs (similar to GitHub's tree
+API):
+
+[example]
+====
+[source,ruby]
+----
+# Repository file browsing with branch/tag support
+register.add_endpoint(
+  id: :repository_contents,
+  type: :index,
+  url: '/repositories/{owner}/{repo}/tree/{ref}/contents/{path}',
+  model: RepositoryContents,
+  query_params: { 'recursive' => '{recursive}' }
+)
+
+# Source code file with line range support
+register.add_endpoint(
+  id: :source_file_lines,
+  type: :resource,
+  url: '/repositories/{owner}/{repo}/blob/{ref}/{file_path}',
+  model: SourceFile,
+  query_params: { 'lines' => '{line_range}', 'highlight' => '{highlight_syntax}' }
+)
+
+# Usage examples
+contents = register.fetch(:repository_contents,
+                         owner: 'lutaml',
+                         repo: 'lutaml-hal',
+                         ref: 'main',
+                         path: 'lib/lutaml/hal',
+                         recursive: 'true')
+# => client.get('/repositories/lutaml/lutaml-hal/tree/main/contents/lib/lutaml/hal?recursive=true')
+
+source = register.fetch(:source_file_lines,
+                       owner: 'lutaml',
+                       repo: 'lutaml-hal',
+                       ref: 'v1.2.0',
+                       file_path: 'lib/lutaml/hal/client.rb',
+                       line_range: '10-50',
+                       highlight_syntax: 'ruby')
+# => client.get('/repositories/lutaml/lutaml-hal/blob/v1.2.0/lib/lutaml/hal/client.rb?lines=10-50&highlight=ruby')
+----
+====
+
+== Advanced search and filtering
+
+Complex search endpoints with multiple query parameters:
+
+[example]
+====
+[source,ruby]
+----
+# Advanced repository search
+register.add_endpoint(
+  id: :repository_search,
+  type: :index,
+  url: '/search/repositories',
+  model: RepositorySearchResults,
+  query_params: {
+    'q' => '{query}',
+    'sort' => '{sort_field}',
+    'order' => '{sort_order}',
+    'language' => '{language}',
+    'size' => '{size_range}',
+    'created' => '{created_date}',
+    'per_page' => '{per_page}',
+    'page' => '{page}'
+  }
+)
+
+# Code search within repositories
+register.add_endpoint(
+  id: :code_search,
+  type: :index,
+  url: '/search/code',
+  model: CodeSearchResults,
+  query_params: {
+    'q' => '{query}',
+    'repo' => '{repository}',
+    'language' => '{language}',
+    'filename' => '{filename}',
+    'extension' => '{file_extension}',
+    'size' => '{file_size}',
+    'path' => '{path_filter}'
+  }
+)
+
+# Usage examples
+repos = register.fetch(:repository_search,
+                      query: 'lutaml language:ruby',
+                      sort_field: 'stars',
+                      sort_order: 'desc',
+                      language: 'ruby',
+                      size_range: '>1000',
+                      per_page: 25,
+                      page: 1)
+# => client.get('/search/repositories?q=lutaml+language%3Aruby&sort=stars&order=desc&language=ruby&size=%3E1000&per_page=25&page=1')
+
+code = register.fetch(:code_search,
+                     query: 'hal_link',
+                     repository: 'lutaml/lutaml-hal',
+                     language: 'ruby',
+                     extension: 'rb',
+                     path_filter: 'lib/')
+# => client.get('/search/code?q=hal_link&repo=lutaml%2Flutaml-hal&language=ruby&extension=rb&path=lib%2F')
+----
+====
+
+== Multi-tenant and scoped resources
+
+Handle multi-tenant applications with complex scoping:
+
+[example]
+====
+[source,ruby]
+----
+# Multi-tenant resource access
+register.add_endpoint(
+  id: :tenant_user_workspace_documents,
+  type: :index,
+  url: '/tenants/{tenant_id}/users/{user_id}/workspaces/{workspace_id}/documents',
+  model: DocumentCollection,
+  query_params: {
+    'type' => '{document_type}',
+    'status' => 'published',
+    'tags' => '{tags}',
+    'modified_since' => '{modified_date}',
+    'sort' => '{sort_field}',
+    'page' => '{page}'
+  }
+)
+
+# Cross-tenant resource relationships
+register.add_endpoint(
+  id: :tenant_resource_dependencies,
+  type: :index,
+  url: '/tenants/{tenant_id}/resources/{resource_id}/dependencies',
+  model: ResourceDependencyCollection,
+  query_params: {
+    'type' => '{dependency_type}',
+    'scope' => '{scope}',
+    'include_external' => '{include_external}'
+  }
+)
+
+# Usage examples
+documents = register.fetch(:tenant_user_workspace_documents,
+                          tenant_id: 'enterprise-corp',
+                          user_id: 'john.doe',
+                          workspace_id: 'project-alpha',
+                          document_type: 'specification',
+                          tags: 'api,documentation',
+                          modified_date: '2024-01-01',
+                          sort_field: 'updated_at',
+                          page: 1)
+# => client.get('/tenants/enterprise-corp/users/john.doe/workspaces/project-alpha/documents?type=specification&status=published&tags=api%2Cdocumentation&modified_since=2024-01-01&sort=updated_at&page=1')
+
+dependencies = register.fetch(:tenant_resource_dependencies,
+                             tenant_id: 'enterprise-corp',
+                             resource_id: 'api-gateway',
+                             dependency_type: 'service',
+                             scope: 'internal',
+                             include_external: 'false')
+# => client.get('/tenants/enterprise-corp/resources/api-gateway/dependencies?type=service&scope=internal&include_external=false')
+----
+====
+
+== Pattern matching benefits
+
+These complex patterns demonstrate several key capabilities:
+
+* **Deep nesting**: Handle APIs with 5+ levels of resource hierarchy
+* **Flexible parameters**: Mix path parameters with query parameters
+* **Fixed constraints**: Use fixed query parameters to create specialized
+  endpoints
+* **Template parameters**: Support dynamic values in both paths and queries
+* **Pattern specificity**: More specific patterns automatically take precedence
+* **URL building**: Automatic interpolation and query parameter construction
+* **Real-world scenarios**: Practical patterns for common API architectures
+
+The path matching system automatically handles URL encoding, parameter
+validation, and pattern precedence, making it easy to build sophisticated HAL
+APIs that can handle complex resource relationships and navigation patterns.
