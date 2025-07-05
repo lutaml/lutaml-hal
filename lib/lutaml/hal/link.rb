@@ -26,7 +26,7 @@ module Lutaml
       # via the `register:` parameter.
       def realize(register: nil, parent_resource: nil)
         # First check if embedded content is available
-        if parent_resource && embedded_content = check_embedded_content(parent_resource, register)
+        if parent_resource && (embedded_content = check_embedded_content(parent_resource, register))
           return embedded_content
         end
 
@@ -49,13 +49,11 @@ module Lutaml
 
         # Try to find matching embedded content
         # This is a simplified approach - in practice, you might need more sophisticated matching
-        embedded_data.each do |key, content|
+        embedded_data.each_value do |content|
           # If content is an array, check if any item matches this link
           if content.is_a?(Array)
             matching_item = content.find { |item| matches_embedded_item?(item) }
-            if matching_item
-              return create_embedded_resource(matching_item, parent_resource, register)
-            end
+            return create_embedded_resource(matching_item, parent_resource, register) if matching_item
           elsif content.is_a?(Hash) && matches_embedded_item?(content)
             return create_embedded_resource(content, parent_resource, register)
           end
@@ -75,7 +73,7 @@ module Lutaml
         false
       end
 
-      def create_embedded_resource(embedded_item, parent_resource, register = nil)
+      def create_embedded_resource(embedded_item, _parent_resource, register = nil)
         # Get the register to determine the appropriate model class
         register = find_register(register)
         return nil unless register
