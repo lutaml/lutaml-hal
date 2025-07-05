@@ -1,0 +1,795 @@
+= Pagination guide
+
+== General
+
+This guide provides comprehensive documentation for working with paginated HAL
+APIs using `lutaml-hal`. Pagination allows APIs to return large datasets in
+manageable chunks, improving performance and user experience.
+
+Before starting this guide, complete the
+link:getting-started-guide.adoc[Getting started guide] and
+link:data-definition-guide.adoc[Data definition guide].
+
+== Overview
+
+=== General
+
+HAL pagination is implemented through the `Lutaml::Hal::Page` class, which
+extends the standard `Resource` class with pagination-specific attributes and
+navigation methods.
+
+Key pagination concepts:
+
+* **Page attributes**: Current page, total pages, items per page, total items
+* **Navigation links**: Self, first, last, next, previous page links
+* **Convenience methods**: Helper methods for checking navigation availability
+* **Batch processing**: Patterns for processing all pages efficiently
+
+== Defining page models
+
+=== General
+
+HAL index APIs often support pagination, which allows clients to retrieve a
+limited number of resources at a time.
+
+The `Lutaml::Hal::Page` class is used to handle pagination in HAL APIs. It is
+a subclass of `Resource`, and provides additional attributes and methods for
+handling pagination information.
+
+=== Default page attributes
+
+The `Page` class by default supports the following attributes:
+
+`page`:: The current page number.
+`pages`:: The total number of pages.
+`limit`:: The number of resources per page.
+`total`:: The total number of resources.
+
+=== Page usage pattern
+
+The way to use the `Page` class is through inheritance from it, where the
+class will automatically create the necessary links for typical page objects.
+
+The typical links of a page object are:
+
+`self`:: A link to the current page.
+`prev`:: A link to the previous page.
+`next`:: A link to the next page.
+`first`:: A link to the first page.
+`last`:: A link to the last page.
+
+The "realize class" of these links are the same as the inherited page object,
+ensuring consistency in the pagination model.
+
+=== Basic page model definition
+
+[example]
+====
+[source,ruby]
+----
+class ProductIndex < Lutaml::Hal::Page
+  # No additional attributes necessary
+  # Inherits: page, pages, limit, total
+  # Auto-generates: self, prev, next, first, last links
+end
+
+register.add_endpoint(
+  id: :product_index,
+  type: :index,
+  url: '/products',
+  model: ProductIndex
+)
+----
+====
+
+=== Custom page models
+
+You can extend page models with additional attributes:
+
+[example]
+====
+[source,ruby]
+----
+class ProductIndex < Lutaml::Hal::Page
+  attribute :category_filter, :string
+  attribute :sort_order, :string
+
+  key_value do
+    map 'category_filter', to: :category_filter
+    map 'sort_order', to: :sort_order
+  end
+end
+----
+====
+
+== Registering paginated endpoints
+
+=== General
+
+Paginated endpoints are registered like regular endpoints, but often include
+query parameters for pagination control.
+
+=== Basic pagination endpoint
+
+[example]
+====
+[source,ruby]
+----
+register.add_endpoint(
+  id: :product_index,
+  type: :index,
+  url: '/products',
+  model: ProductIndex
+)
+----
+====
+
+=== Pagination with query parameters
+
+[example]
+====
+[source,ruby]
+----
+register.add_endpoint(
+  id: :product_index_paginated,
+  type: :index,
+  url: '/products',
+  model: ProductIndex,
+  query_params: {
+    'page' => '{page}',
+    'limit' => '{limit}',
+    'sort' => '{sort}',
+    'filter' => '{filter}'
+  }
+)
+
+# Fetch specific page
+page_2 = register.fetch(
+  :product_index_paginated,
+  page: 2,
+  limit: 20,
+  sort: 'name_asc',
+  filter: 'electronics'
+)
+----
+====
+
+== Navigation methods
+
+=== General
+
+The `Page` class provides several convenience methods for navigating through
+paginated results.
+
+=== Navigation link methods
+
+`#next_page`:: Returns the next page link if available, `nil` otherwise.
+
+`#prev_page`:: Returns the previous page link if available, `nil` otherwise.
+
+`#first_page`:: Returns the first page link if available, `nil` otherwise.
+
+`#last_page`:: Returns the last page link if available, `nil` otherwise.
+
+These methods return `Link` objects that can be realized using the `realize`
+method:
+
+[example]
+====
+[source,ruby]
+----
+current_page = register.fetch(:product_index)
+
+# Navigate to next page
+if current_page.next_page
+  next_page = current_page.next_page.realize
+end
+
+# Navigate to previous page
+if current_page.prev_page
+  prev_page = current_page.prev_page.realize
+end
+
+# Jump to first or last page
+first_page = current_page.first_page.realize if current_page.first_page
+last_page = current_page.last_page.realize if current_page.last_page
+----
+====
+
+=== Helper methods
+
+The `Page` class also provides helper methods to check the availability of
+navigation links:
+
+`#has_next?`:: Returns `true` if there is a next page available, `false`
+otherwise.
+
+`#has_prev?`:: Returns `true` if there is a previous page available, `false`
+otherwise.
+
+`#has_first?`:: Returns `true` if there is a first page link available,
+`false` otherwise.
+
+`#has_last?`:: Returns `true` if there is a last page link available, `false`
+otherwise.
+
+`#total_pages`:: Returns the total number of pages (alias for the `pages`
+attribute).
+
+[example]
+====
+[source,ruby]
+----
+page = register.fetch(:product_index)
+
+puts "Page #{page.page} of #{page.total_pages}"
+puts "Items per page: #{page.limit}"
+puts "Total items: #{page.total}"
+
+puts "Has next page: #{page.has_next?}"
+puts "Has previous page: #{page.has_prev?}"
+puts "Can go to first: #{page.has_first?}"
+puts "Can go to last: #{page.has_last?}"
+----
+====
+
+== Complete pagination example
+
+=== Declaration
+
+[example]
+====
+[source,ruby]
+----
+class ResourceIndex < Lutaml::Hal::Page
+  # No attribute definition necessary
+end
+
+register.add_endpoint(
+  id: :resource_index,
+  type: :index,
+  url: '/resources',
+  model: ResourceIndex
+)
+----
+====
+
+=== Usage
+
+[example]
+====
+[source,ruby]
+----
+page_1 = register.fetch(:resource_index)
+# => client.get('/resources')
+# => {
+#   "page": 1,
+#   "pages": 10,
+#   "limit": 10,
+#   "total": 100,
+#   "_links": {
+#     "self": {
+#       "href": "https://api.example.com/resources?page=1&items=10"
+#     },
+#     "first": {
+#       "href": "https://api.example.com/resources?page=1&items=10"
+#     },
+#     "last": {
+#       "href": "https://api.example.com/resources?page=10&items=10"
+#     },
+#     "next": {
+#       "href": "https://api.example.com/resources?page=2&items=10"
+#     }
+#   }
+# }
+
+page_1
+# => #<ResourceIndex page: 1, pages: 10, limit: 10, total: 100,
+#      links: #<ResourceIndexLinks
+#                self: #<ResourceIndexLink href: "/resources?page=1&items=10">,
+#                next: #<ResourceIndexLink href: "/resources?page=2&items=10">,
+#                last: #<ResourceIndexLink href: "/resources?page=10&items=10">>>
+
+# Check if navigation is available
+page_1.has_next?    # => true
+page_1.has_prev?    # => false
+page_1.total_pages  # => 10
+
+# Navigate using convenience methods
+page_2 = page_1.next_page.realize
+# => client.get('/resources?page=2&items=10')
+# => #<ResourceIndex page: 2, pages: 10, limit: 10, total: 100, ...>
+
+page_2.has_prev?    # => true
+page_2.has_next?    # => true
+
+# Navigate back to first page
+first_page = page_2.first_page.realize
+# => client.get('/resources?page=1&items=10')
+
+# Jump to last page
+last_page = page_2.last_page.realize
+# => client.get('/resources?page=10&items=10')
+----
+====
+
+== Advanced pagination patterns
+
+=== Exhaustive pagination
+
+For scenarios where you need to process all pages of results, you can combine
+the pagination methods:
+
+[example]
+====
+[source,ruby]
+----
+def process_all_pages(register, endpoint_id)
+  current_page = register.fetch(endpoint_id)
+  processed_count = 0
+
+  loop do
+    # Process current page
+    puts "Processing page #{current_page.page} of #{current_page.total_pages}"
+
+    # Your processing logic here
+    processed_count += current_page.limit
+
+    # Move to next page or break if no more pages
+    break unless current_page.has_next?
+    current_page = current_page.next_page.realize
+  end
+
+  puts "Processed #{processed_count} items across #{current_page.total_pages} pages"
+end
+
+# Usage
+process_all_pages(register, :product_index)
+----
+====
+
+=== Batch processing with resource extraction
+
+Process all resources from all pages efficiently:
+
+[example]
+====
+[source,ruby]
+----
+def collect_all_resources(register, endpoint_id, resource_link_name = :items)
+  current_page = register.fetch(endpoint_id)
+  all_resources = []
+
+  loop do
+    puts "Collecting from page #{current_page.page} of #{current_page.total_pages}"
+
+    # Extract resources from current page
+    if current_page.links.respond_to?(resource_link_name)
+      page_resources = current_page.links.send(resource_link_name)
+
+      if page_resources.is_a?(Array)
+        realized_resources = page_resources.map(&:realize)
+      else
+        realized_resources = [page_resources.realize]
+      end
+
+      all_resources.concat(realized_resources)
+    end
+
+    # Move to next page or break
+    break unless current_page.has_next?
+    current_page = current_page.next_page.realize
+  end
+
+  puts "Collected #{all_resources.length} total resources"
+  all_resources
+end
+
+# Usage
+all_products = collect_all_resources(register, :product_index, :products)
+----
+====
+
+=== Parallel page processing
+
+Process multiple pages concurrently (requires thread-safe register):
+
+[example]
+====
+[source,ruby]
+----
+require 'concurrent'
+
+def process_pages_parallel(register, endpoint_id, max_threads: 5)
+  first_page = register.fetch(endpoint_id)
+  total_pages = first_page.total_pages
+
+  # Create thread pool
+  pool = Concurrent::FixedThreadPool.new(max_threads)
+  futures = []
+
+  (1..total_pages).each do |page_num|
+    future = Concurrent::Future.execute(executor: pool) do
+      page = register.fetch(endpoint_id, page: page_num)
+      process_single_page(page)
+    end
+    futures << future
+  end
+
+  # Wait for all pages to complete
+  results = futures.map(&:value)
+  pool.shutdown
+
+  results
+end
+
+def process_single_page(page)
+  # Your page processing logic
+  puts "Processed page #{page.page}"
+  page
+end
+----
+====
+
+=== Pagination with filtering and sorting
+
+Combine pagination with dynamic filtering:
+
+[example]
+====
+[source,ruby]
+----
+class FilteredPagination
+  def initialize(register, endpoint_id)
+    @register = register
+    @endpoint_id = endpoint_id
+    @filters = {}
+    @sort_options = {}
+  end
+
+  def filter(key, value)
+    @filters[key] = value
+    self
+  end
+
+  def sort(field, direction = 'asc')
+    @sort_options['sort'] = "#{field}_#{direction}"
+    self
+  end
+
+  def page(page_num, limit = 20)
+    params = @filters.merge(@sort_options).merge(
+      page: page_num,
+      limit: limit
+    )
+
+    @register.fetch(@endpoint_id, **params)
+  end
+
+  def all_pages(limit = 20)
+    current_page = page(1, limit)
+    all_results = []
+
+    loop do
+      # Extract items from current page
+      if current_page.links.respond_to?(:items)
+        page_items = current_page.links.items.map(&:realize)
+        all_results.concat(page_items)
+      end
+
+      break unless current_page.has_next?
+      current_page = current_page.next_page.realize
+    end
+
+    all_results
+  end
+end
+
+# Usage
+pagination = FilteredPagination.new(register, :product_search)
+electronics = pagination
+  .filter('category', 'electronics')
+  .filter('min_price', 10)
+  .sort('price', 'asc')
+  .all_pages(50)
+----
+====
+
+== Error handling in pagination
+
+=== Robust pagination with error handling
+
+[example]
+====
+[source,ruby]
+----
+def safe_paginate(register, endpoint_id, max_retries: 3)
+  current_page = register.fetch(endpoint_id)
+  processed_pages = 0
+
+  loop do
+    retries = 0
+
+    begin
+      puts "Processing page #{current_page.page} of #{current_page.total_pages}"
+
+      # Process current page
+      yield(current_page) if block_given?
+      processed_pages += 1
+
+      # Move to next page
+      break unless current_page.has_next?
+      current_page = current_page.next_page.realize
+
+    rescue Lutaml::Hal::Errors::ApiError => e
+      retries += 1
+
+      if retries <= max_retries
+        puts "Error on page #{current_page.page}, retrying (#{retries}/#{max_retries}): #{e.message}"
+        sleep(2 ** retries)  # Exponential backoff
+        retry
+      else
+        puts "Failed to process page #{current_page.page} after #{max_retries} retries"
+        break
+      end
+    end
+  end
+
+  puts "Successfully processed #{processed_pages} pages"
+end
+
+# Usage
+safe_paginate(register, :product_index) do |page|
+  # Your page processing logic
+  puts "Page #{page.page} has #{page.limit} items"
+end
+----
+====
+
+=== Handling missing pagination links
+
+[example]
+====
+[source,ruby]
+----
+def safe_navigate(page, direction)
+  case direction
+  when :next
+    return nil unless page.has_next?
+    page.next_page&.realize
+  when :prev
+    return nil unless page.has_prev?
+    page.prev_page&.realize
+  when :first
+    return nil unless page.has_first?
+    page.first_page&.realize
+  when :last
+    return nil unless page.has_last?
+    page.last_page&.realize
+  else
+    raise ArgumentError, "Invalid direction: #{direction}"
+  end
+rescue Lutaml::Hal::Errors::NotFoundError
+  puts "Navigation link not found for direction: #{direction}"
+  nil
+rescue Lutaml::Hal::Errors::ApiError => e
+  puts "Error navigating #{direction}: #{e.message}"
+  nil
+end
+
+# Usage
+current_page = register.fetch(:product_index)
+next_page = safe_navigate(current_page, :next)
+----
+====
+
+== Performance optimization
+
+=== Pagination caching
+
+Cache pages to avoid redundant API calls:
+
+[example]
+====
+[source,ruby]
+----
+class CachedPagination
+  def initialize(register, endpoint_id, cache_size: 10)
+    @register = register
+    @endpoint_id = endpoint_id
+    @cache = {}
+    @cache_order = []
+    @cache_size = cache_size
+  end
+
+  def fetch_page(page_num, **params)
+    cache_key = [page_num, params].hash
+
+    if @cache.key?(cache_key)
+      # Move to end of cache order (LRU)
+      @cache_order.delete(cache_key)
+      @cache_order.push(cache_key)
+      return @cache[cache_key]
+    end
+
+    # Fetch from API
+    page = @register.fetch(@endpoint_id, page: page_num, **params)
+
+    # Add to cache
+    @cache[cache_key] = page
+    @cache_order.push(cache_key)
+
+    # Evict oldest if cache is full
+    if @cache_order.length > @cache_size
+      oldest_key = @cache_order.shift
+      @cache.delete(oldest_key)
+    end
+
+    page
+  end
+
+  def clear_cache
+    @cache.clear
+    @cache_order.clear
+  end
+end
+
+# Usage
+cached_pagination = CachedPagination.new(register, :product_index)
+page_1 = cached_pagination.fetch_page(1)  # API call
+page_1_again = cached_pagination.fetch_page(1)  # From cache
+----
+====
+
+=== Prefetching strategies
+
+Prefetch adjacent pages for smoother navigation:
+
+[example]
+====
+[source,ruby]
+----
+class PrefetchingPagination
+  def initialize(register, endpoint_id)
+    @register = register
+    @endpoint_id = endpoint_id
+    @prefetch_cache = {}
+  end
+
+  def fetch_with_prefetch(page_num, **params)
+    # Fetch current page
+    current_page = @register.fetch(@endpoint_id, page: page_num, **params)
+
+    # Prefetch adjacent pages in background
+    prefetch_adjacent_pages(current_page, **params)
+
+    current_page
+  end
+
+  private
+
+  def prefetch_adjacent_pages(current_page, **params)
+    Thread.new do
+      # Prefetch next page
+      if current_page.has_next?
+        next_page_num = current_page.page + 1
+        @prefetch_cache[next_page_num] = @register.fetch(
+          @endpoint_id,
+          page: next_page_num,
+          **params
+        )
+      end
+
+      # Prefetch previous page
+      if current_page.has_prev?
+        prev_page_num = current_page.page - 1
+        @prefetch_cache[prev_page_num] = @register.fetch(
+          @endpoint_id,
+          page: prev_page_num,
+          **params
+        )
+      end
+    end
+  end
+end
+----
+====
+
+== Best practices
+
+=== General
+
+Follow these best practices for effective pagination handling:
+
+=== Always check navigation availability
+
+[example]
+====
+[source,ruby]
+----
+# Good
+if current_page.has_next?
+  next_page = current_page.next_page.realize
+end
+
+# Avoid
+next_page = current_page.next_page.realize  # May fail if no next page
+----
+====
+
+=== Handle edge cases
+
+[example]
+====
+[source,ruby]
+----
+def safe_pagination_info(page)
+  {
+    current_page: page.page,
+    total_pages: page.total_pages,
+    items_per_page: page.limit,
+    total_items: page.total,
+    has_next: page.has_next?,
+    has_prev: page.has_prev?,
+    is_first_page: page.page == 1,
+    is_last_page: page.page == page.total_pages
+  }
+end
+----
+====
+
+=== Use appropriate page sizes
+
+[example]
+====
+[source,ruby]
+----
+# Consider API limits and performance
+SMALL_PAGE_SIZE = 10   # For UI pagination
+MEDIUM_PAGE_SIZE = 50  # For data processing
+LARGE_PAGE_SIZE = 100  # For bulk operations (if API supports)
+
+# Adjust based on use case
+page = register.fetch(:product_index, limit: MEDIUM_PAGE_SIZE)
+----
+====
+
+=== Monitor pagination performance
+
+[example]
+====
+[source,ruby]
+----
+def benchmark_pagination(register, endpoint_id, pages_to_test: 5)
+  times = []
+
+  (1..pages_to_test).each do |page_num|
+    start_time = Time.now
+    register.fetch(endpoint_id, page: page_num)
+    end_time = Time.now
+
+    times << (end_time - start_time)
+    puts "Page #{page_num}: #{times.last.round(3)}s"
+  end
+
+  avg_time = times.sum / times.length
+  puts "Average time per page: #{avg_time.round(3)}s"
+end
+----
+====
+
+== Next steps
+
+=== General
+
+Now that you understand pagination thoroughly, explore these related topics:
+
+* link:runtime-usage-guide.adoc[Runtime Usage Guide] - Advanced fetching
+  patterns and error handling
+* link:hal-links-reference.adoc[HAL Links Reference] - Customizing pagination
+  link behavior
+* link:complex-path-patterns.adoc[Complex Path Patterns] - Advanced URL
+  patterns for pagination endpoints
+
+For basic pagination setup, refer to the
+link:getting-started-guide.adoc[Getting started guide].

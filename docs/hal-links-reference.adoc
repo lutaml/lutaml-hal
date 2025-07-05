@@ -1,0 +1,700 @@
+= HAL links reference
+
+== General
+
+This reference guide provides comprehensive documentation for configuring and
+customizing HAL links in `lutaml-hal`. HAL links are the core mechanism for
+representing relationships between resources in a HAL API.
+
+This is an advanced reference document. Before using this guide, complete the
+link:getting-started-guide.adoc[Getting started guide] and
+link:data-definition-guide.adoc[Data definition guide].
+
+== Overview
+
+=== General
+
+HAL links enable navigation between related resources in a hypermedia-driven
+API. The `lutaml-hal` library provides sophisticated link management through:
+
+* Automatic link set and link class generation
+* Lazy class resolution for dynamic loading scenarios
+* Custom link and link set classes for specialized behavior
+* Type-safe link realization with proper error handling
+
+== Basic link declaration
+
+=== General
+
+HAL links are declared using the `hal_link` method in resource classes. This
+method defines the relationship between resources and configures how links
+should be serialized and realized.
+
+=== Syntax
+
+[source,ruby]
+----
+hal_link :link_name,
+  key: 'link_key',
+  realize_class: 'TargetResourceClass',
+  link_class: 'LinkClass',
+  link_set_class: 'LinkSetClass'
+----
+
+=== Parameters
+
+`:link_name`:: The name of the link, which will be used to access the link in
+the resource object.
+
+`key: 'link_key'`:: The key of the link in the JSON response. This is the name
+of the link as it appears in the `_links` section of the HAL resource.
+
+`realize_class: 'TargetResourceClass'`:: The class of the target resource that
+the link points to. This is used to resolve the link to the associated
+resource.
+
+`link_class: 'LinkClass'`:: (optional) The class of the link that defines
+specific behavior or attributes for the link object itself.
+
+`link_set_class: 'LinkSetClass'`:: (optional) The class of the link set object
+that contains the links.
+
+=== Basic example
+
+[example]
+====
+[source,ruby]
+----
+module MyApi
+  class Product < Lutaml::Hal::Resource
+    attribute :id, :string
+    attribute :name, :string
+
+    hal_link :self, key: 'self', realize_class: 'Product'
+    hal_link :category, key: 'category', realize_class: 'Category'
+    hal_link :related, key: 'related', realize_class: 'Product'
+
+    key_value do
+      map 'id', to: :id
+      map 'name', to: :name
+    end
+  end
+end
+----
+====
+
+== Class reference strategies
+
+=== General
+
+The `realize_class`, `link_class`, and `link_set_class` parameters support
+both string and class references, each with specific use cases and benefits.
+
+=== String references (recommended)
+
+String references provide maximum flexibility and are recommended for most use
+cases:
+
+[example]
+====
+[source,ruby]
+----
+hal_link :category, key: 'category', realize_class: 'Category'
+hal_link :products, key: 'products', realize_class: 'ProductIndex'
+hal_link :related, key: 'related', realize_class: 'Product', link_class: 'ProductLink'
+----
+====
+
+==== Benefits of string references
+
+* **Delayed resolution**: Classes can be defined after the link declaration
+* **Dynamic loading**: Works with classes loaded at runtime
+* **Circular dependencies**: Avoids issues with mutually referencing classes
+* **Consistent naming**: Ensures predictable type names in serialization
+
+=== Class references
+
+Direct class references work when classes are statically available:
+
+[example]
+====
+[source,ruby]
+----
+hal_link :category, key: 'category', realize_class: Category
+hal_link :products, key: 'products', realize_class: ProductIndex
+hal_link :related, key: 'related', realize_class: Product, link_class: ProductLink
+----
+====
+
+==== When to use class references
+
+* Classes are defined before the resource class
+* Using autoload mechanisms
+* Static class hierarchies without circular dependencies
+
+=== Lazy resolution mechanism
+
+The framework automatically resolves string references to actual classes when
+needed during serialization and link realization. This ensures consistent
+behavior regardless of class loading order.
+
+[example]
+====
+[source,ruby]
+----
+# This works even if Category is defined later
+class Product < Lutaml::Hal::Resource
+  hal_link :category, key: 'category', realize_class: 'Category'
+end
+
+# Category can be defined after Product
+class Category < Lutaml::Hal::Resource
+  attribute :name, :string
+  hal_link :self, key: 'self', realize_class: 'Category'
+end
+----
+====
+
+== Automatic link set and link class generation
+
+=== General
+
+The `lutaml-hal` framework automatically generates link set and link classes
+for each resource, providing a consistent and predictable structure for HAL
+links.
+
+=== Link set class generation
+
+For each resource class, the framework creates a corresponding link set class:
+
+* **Naming convention**: `{ResourceClass}LinkSet`
+* **Base class**: Inherits from `Lutaml::Hal::LinkSet`
+* **Automatic attributes**: Each `hal_link` declaration adds an attribute
+* **JSON mapping**: Automatically maps to the `_links` key
+
+[example]
+====
+[source,ruby]
+----
+class Product < Lutaml::Hal::Resource
+  hal_link :self, key: 'self', realize_class: 'Product'
+  hal_link :category, key: 'category', realize_class: 'Category'
+end
+
+# Framework automatically creates:
+class ProductLinkSet < Lutaml::Hal::LinkSet
+  attribute :self, ProductLink
+  attribute :category, CategoryLink
+
+  key_value do
+    map 'self', to: :self
+    map 'category', to: :category
+  end
+end
+----
+====
+
+=== Link class generation
+
+For each link, the framework creates a corresponding link class:
+
+* **Naming convention**: `{TargetResourceClass}Link`
+* **Base class**: Inherits from `Lutaml::Hal::Link`
+* **Type attribute**: Automatically sets the target resource type
+* **Realization**: Provides `realize` method for fetching the target resource
+
+[example]
+====
+[source,ruby]
+----
+# Framework automatically creates:
+class ProductLink < Lutaml::Hal::Link
+  attribute :type, :string, default: 'Product'
+end
+
+class CategoryLink < Lutaml::Hal::Link
+  attribute :type, :string, default: 'Category'
+end
+----
+====
+
+=== Resource integration
+
+The framework automatically integrates the link set into the resource class:
+
+[example]
+====
+[source,ruby]
+----
+class Product < Lutaml::Hal::Resource
+  # Framework automatically adds:
+  attribute :links, ProductLinkSet
+
+  key_value do
+    # Framework automatically adds:
+    map '_links', to: :links
+  end
+end
+----
+====
+
+== Custom link set classes
+
+=== General
+
+When you need specialized behavior or additional attributes in your link sets,
+you can provide custom link set classes.
+
+=== Defining custom link set classes
+
+[example]
+====
+[source,ruby]
+----
+module MyApi
+  class ProductLinkSet < Lutaml::Hal::LinkSet
+    attribute :self, ProductLink
+    attribute :category, CategoryLink
+    attribute :custom_metadata, :string
+
+    key_value do
+      map 'self', to: :self
+      map 'category', to: :category
+      map 'metadata', to: :custom_metadata
+    end
+  end
+
+  class Product < Lutaml::Hal::Resource
+    attribute :id, :string
+    attribute :links, ProductLinkSet
+
+    key_value do
+      map 'id', to: :id
+      map '_links', to: :links
+    end
+  end
+end
+----
+====
+
+=== Important considerations for custom link sets
+
+When using custom link set classes:
+
+. **Manual attribute definition**: Links are no longer automatically added via
+  `hal_link`
+. **Explicit mappings**: All `key_value` mappings must be provided manually
+. **Link class management**: You must define or reference appropriate link
+  classes
+
+=== Extending auto-generated link sets
+
+Alternatively, you can extend the automatically generated link set class:
+
+[example]
+====
+[source,ruby]
+----
+class Product < Lutaml::Hal::Resource
+  attribute :id, :string
+  hal_link :self, key: 'self', realize_class: 'Product'
+  hal_link :category, key: 'category', realize_class: 'Category'
+end
+
+# Extend the auto-generated class
+class ProductLinkSet < Lutaml::Hal::LinkSet
+  attribute :custom_metadata, :string
+  attribute :computed_link, ComputedLink
+
+  key_value do
+    map 'metadata', to: :custom_metadata
+    map 'computed', to: :computed_link
+  end
+end
+----
+====
+
+== Custom link classes
+
+=== General
+
+Custom link classes allow you to add specialized behavior, additional
+attributes, or custom realization logic to individual links.
+
+=== Defining custom link classes
+
+[example]
+====
+[source,ruby]
+----
+module MyApi
+  class CategoryLink < Lutaml::Hal::Link
+    attribute :type, :string, default: 'Category'
+    attribute :language_code, :string
+    attribute :priority, :integer
+
+    key_value do
+      map 'language_code', to: :language_code
+      map 'priority', to: :priority
+    end
+
+    def realize(register = nil)
+      # Custom realization logic
+      category = super(register)
+      category.language = language_code if category.respond_to?(:language=)
+      category
+    end
+  end
+
+  class Product < Lutaml::Hal::Resource
+    hal_link :category, key: 'category', realize_class: 'Category', link_class: 'CategoryLink'
+  end
+end
+----
+====
+
+=== Custom realization behavior
+
+Override the `realize` method to implement custom fetching logic:
+
+[example]
+====
+[source,ruby]
+----
+class CachedProductLink < Lutaml::Hal::Link
+  @@cache = {}
+
+  def realize(register = nil)
+    cache_key = href
+
+    @@cache[cache_key] ||= begin
+      puts "Fetching #{href} from API"
+      super(register)
+    end
+  end
+
+  def self.clear_cache
+    @@cache.clear
+  end
+end
+----
+====
+
+=== Extending auto-generated link classes
+
+You can also extend automatically generated link classes:
+
+[example]
+====
+[source,ruby]
+----
+class Product < Lutaml::Hal::Resource
+  hal_link :category, key: 'category', realize_class: 'Category'
+end
+
+# Extend the auto-generated class
+class CategoryLink < Lutaml::Hal::Link
+  attribute :language_code, :string
+
+  key_value do
+    map 'language_code', to: :language_code
+  end
+
+  def localized_name
+    "#{realize.name} (#{language_code})"
+  end
+end
+----
+====
+
+== Advanced link patterns
+
+=== Collection links
+
+Handle links that point to collections of resources:
+
+[example]
+====
+[source,ruby]
+----
+class Product < Lutaml::Hal::Resource
+  hal_link :related_products, key: 'related', realize_class: 'Product'
+end
+
+# Usage
+product = register.fetch(:product_resource, id: '123')
+related_links = product.links.related_products
+
+if related_links.is_a?(Array)
+  related_products = related_links.map(&:realize)
+else
+  related_products = [related_links.realize]
+end
+----
+====
+
+=== Conditional links
+
+Handle optional links that may not always be present:
+
+[example]
+====
+[source,ruby]
+----
+class ConditionalLinkSet < Lutaml::Hal::LinkSet
+  attribute :category, CategoryLink
+  attribute :premium_features, PremiumLink
+
+  def has_premium_access?
+    !premium_features.nil?
+  end
+end
+
+class Product < Lutaml::Hal::Resource
+  attribute :links, ConditionalLinkSet
+end
+
+# Usage
+product = register.fetch(:product_resource, id: '123')
+
+if product.links.has_premium_access?
+  premium = product.links.premium_features.realize
+end
+----
+====
+
+=== Polymorphic links
+
+Handle links that can point to different types of resources:
+
+[example]
+====
+[source,ruby]
+----
+class PolymorphicLink < Lutaml::Hal::Link
+  def realize(register = nil)
+    case type
+    when 'Product'
+      super(register)
+    when 'Category'
+      # Custom logic for categories
+      register.fetch(:category_resource, id: extract_id_from_href)
+    when 'Brand'
+      # Custom logic for brands
+      register.fetch(:brand_resource, id: extract_id_from_href)
+    else
+      raise "Unknown link type: #{type}"
+    end
+  end
+
+  private
+
+  def extract_id_from_href
+    href.split('/').last
+  end
+end
+----
+====
+
+== Link realization patterns
+
+=== Basic realization
+
+[example]
+====
+[source,ruby]
+----
+product = register.fetch(:product_resource, id: '123')
+category = product.links.category.realize(register)
+----
+====
+
+=== Global register realization
+
+[example]
+====
+[source,ruby]
+----
+# With global register configured
+product = register.fetch(:product_resource, id: '123')
+category = product.links.category.realize  # No register needed
+----
+====
+
+=== Batch realization
+
+[example]
+====
+[source,ruby]
+----
+def realize_all_links(resource, register)
+  realized = {}
+
+  resource.links.class.attributes.each do |attr_name, _|
+    link = resource.links.send(attr_name)
+    next unless link
+
+    if link.is_a?(Array)
+      realized[attr_name] = link.map { |l| l.realize(register) }
+    else
+      realized[attr_name] = link.realize(register)
+    end
+  end
+
+  realized
+end
+----
+====
+
+=== Error handling in realization
+
+[example]
+====
+[source,ruby]
+----
+class SafeLink < Lutaml::Hal::Link
+  def safe_realize(register = nil)
+    realize(register)
+  rescue Lutaml::Hal::Errors::NotFoundError
+    nil
+  rescue Lutaml::Hal::Errors::ApiError => e
+    puts "Failed to realize link #{href}: #{e.message}"
+    nil
+  end
+end
+----
+====
+
+== Type naming and polymorphism
+
+=== General
+
+The framework uses base class names for type attributes, ensuring consistent
+naming across different namespaces and loading scenarios.
+
+=== Type naming conventions
+
+[example]
+====
+[source,ruby]
+----
+module MyApi
+  class Product < Lutaml::Hal::Resource
+    hal_link :category, key: 'category', realize_class: 'Category'
+  end
+end
+
+# Type name will be 'Category', not 'MyApi::Category'
+product.links.category.type  # => 'Category'
+----
+====
+
+=== Polymorphic type handling
+
+[example]
+====
+[source,ruby]
+----
+class BaseResource < Lutaml::Hal::Resource
+  # Common attributes
+end
+
+class Product < BaseResource
+  hal_link :related_item, key: 'related', realize_class: 'BaseResource'
+end
+
+class Category < BaseResource
+  # Category-specific attributes
+end
+
+# The link can point to any BaseResource subclass
+# Type resolution happens automatically based on the 'type' attribute
+----
+====
+
+== Best practices
+
+=== General
+
+Follow these best practices for effective HAL link management:
+
+=== Use string references
+
+Prefer string references for `realize_class`, `link_class`, and
+`link_set_class` to avoid class loading issues:
+
+[example]
+====
+[source,ruby]
+----
+# Preferred
+hal_link :category, key: 'category', realize_class: 'Category'
+
+# Avoid unless classes are guaranteed to be loaded
+hal_link :category, key: 'category', realize_class: Category
+----
+====
+
+=== Consistent naming conventions
+
+Follow consistent naming patterns for link classes and link sets:
+
+[example]
+====
+[source,ruby]
+----
+# Resource: Product
+# Link set: ProductLinkSet
+# Links: ProductLink, CategoryLink, etc.
+----
+====
+
+=== Error handling
+
+Always handle potential errors in custom realization logic:
+
+[example]
+====
+[source,ruby]
+----
+def realize(register = nil)
+  super(register)
+rescue Lutaml::Hal::Errors::ApiError => e
+  Rails.logger.error "Failed to realize link: #{e.message}"
+  raise
+end
+----
+====
+
+=== Performance considerations
+
+Consider caching for frequently accessed links:
+
+[example]
+====
+[source,ruby]
+----
+class CachedLink < Lutaml::Hal::Link
+  def realize(register = nil)
+    @realized ||= super(register)
+  end
+
+  def invalidate_cache
+    @realized = nil
+  end
+end
+----
+====
+
+== Next steps
+
+=== General
+
+Now that you understand HAL links in detail, explore these related topics:
+
+* link:pagination-guide.adoc[Pagination Guide] - Using links for pagination
+  navigation
+* link:runtime-usage-guide.adoc[Runtime Usage Guide] - Practical link
+  realization patterns
+* link:complex-path-patterns.adoc[Complex Path Patterns] - Advanced URL
+  patterns for sophisticated APIs

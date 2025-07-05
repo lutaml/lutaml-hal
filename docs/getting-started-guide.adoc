@@ -1,0 +1,358 @@
+= Getting started guide
+
+== General
+
+This guide provides a step-by-step tutorial for implementing your first HAL API
+client using `lutaml-hal`. You'll learn the essential concepts and create a
+working example in about 15 minutes.
+
+By the end of this guide, you'll have a complete understanding of the basic
+workflow and be ready to explore more advanced features.
+
+== Prerequisites
+
+=== General
+
+Before starting, ensure you have:
+
+* Ruby 2.7 or later installed
+* Basic familiarity with REST APIs
+* Understanding of JSON format
+
+=== Installation
+
+Add this line to your application's Gemfile:
+
+[source,ruby]
+----
+gem 'lutaml-hal'
+----
+
+And then execute:
+
+[source,sh]
+----
+$ bundle install
+----
+
+Or install it yourself as:
+
+[source,sh]
+----
+$ gem install lutaml-hal
+----
+
+== Quick start tutorial
+
+=== General
+
+This tutorial walks through creating a simple product catalog API client. We'll
+define a product resource, set up API endpoints, and fetch data from a HAL API.
+
+=== Step 1: Define your first HAL resource
+
+Create a simple product model that represents a HAL resource:
+
+[example]
+====
+[source,ruby]
+----
+require 'lutaml-hal'
+
+module MyApi
+  class Product < Lutaml::Hal::Resource
+    # Define the product attributes
+    attribute :id, :string
+    attribute :name, :string
+    attribute :price, :float
+
+    # Define HAL links to other resources
+    hal_link :self, key: 'self', realize_class: 'Product'
+    hal_link :category, key: 'category', realize_class: 'Category'
+
+    # Map JSON keys to model attributes
+    key_value do
+      map 'id', to: :id
+      map 'name', to: :name
+      map 'price', to: :price
+    end
+  end
+end
+----
+====
+
+=== Step 2: Create an API client
+
+Set up the HTTP client that will communicate with your HAL API:
+
+[example]
+====
+[source,ruby]
+----
+# Create a client pointing to your API
+client = Lutaml::Hal::Client.new(api_url: 'https://api.example.com')
+----
+====
+
+=== Step 3: Create a model register
+
+The model register manages your resource models and their API endpoints:
+
+[example]
+====
+[source,ruby]
+----
+# Create a register to manage your models
+register = Lutaml::Hal::ModelRegister.new(
+  name: :my_api_register,
+  client: client
+)
+----
+====
+
+=== Step 4: Register API endpoints
+
+Define how your models map to API endpoints:
+
+[example]
+====
+[source,ruby]
+----
+# Register endpoint for fetching individual products
+register.add_endpoint(
+  id: :product_resource,
+  type: :resource,
+  url: '/products/{id}',
+  model: MyApi::Product
+)
+
+# Register endpoint for fetching product collections
+register.add_endpoint(
+  id: :product_index,
+  type: :index,
+  url: '/products',
+  model: MyApi::Product
+)
+----
+====
+
+=== Step 5: Fetch resources from the API
+
+Now you can fetch and work with HAL resources:
+
+[example]
+====
+[source,ruby]
+----
+# Fetch a specific product
+product = register.fetch(:product_resource, id: '123')
+puts product.name    # => "Awesome Product"
+puts product.price   # => 29.99
+
+# Access HAL links
+self_link = product.links.self
+category_link = product.links.category
+
+# Realize (fetch) linked resources
+category = category_link.realize(register)
+puts category.name   # => "Electronics"
+----
+====
+
+=== Step 6: Work with collections
+
+Fetch and navigate through collections of resources:
+
+[example]
+====
+[source,ruby]
+----
+# Fetch a collection of products
+products = register.fetch(:product_index)
+
+# Access individual product links from the collection
+first_product_link = products.links.products.first
+first_product = first_product_link.realize(register)
+
+puts first_product.name
+----
+====
+
+== Complete working example
+
+=== General
+
+Here's the complete code that demonstrates all the concepts together:
+
+[example]
+====
+[source,ruby]
+----
+require 'lutaml-hal'
+
+# Define your HAL resource model
+module MyApi
+  class Product < Lutaml::Hal::Resource
+    attribute :id, :string
+    attribute :name, :string
+    attribute :price, :float
+
+    hal_link :self, key: 'self', realize_class: 'Product'
+    hal_link :category, key: 'category', realize_class: 'Category'
+
+    key_value do
+      map 'id', to: :id
+      map 'name', to: :name
+      map 'price', to: :price
+    end
+  end
+
+  class Category < Lutaml::Hal::Resource
+    attribute :id, :string
+    attribute :name, :string
+
+    hal_link :self, key: 'self', realize_class: 'Category'
+
+    key_value do
+      map 'id', to: :id
+      map 'name', to: :name
+    end
+  end
+end
+
+# Set up the API client and register
+client = Lutaml::Hal::Client.new(api_url: 'https://api.example.com')
+register = Lutaml::Hal::ModelRegister.new(
+  name: :my_api_register,
+  client: client
+)
+
+# Register endpoints
+register.add_endpoint(
+  id: :product_resource,
+  type: :resource,
+  url: '/products/{id}',
+  model: MyApi::Product
+)
+
+register.add_endpoint(
+  id: :category_resource,
+  type: :resource,
+  url: '/categories/{id}',
+  model: MyApi::Category
+)
+
+# Use the API
+product = register.fetch(:product_resource, id: '123')
+puts "Product: #{product.name} - $#{product.price}"
+
+# Navigate to related resources
+category = product.links.category.realize(register)
+puts "Category: #{category.name}"
+----
+====
+
+== Understanding the workflow
+
+=== General
+
+The `lutaml-hal` workflow follows a two-phase approach:
+
+=== Data definition phase
+
+. **Define resource models**: Create classes that inherit from
+  `Lutaml::Hal::Resource`
+. **Set up client**: Create a `Client` instance pointing to your API
+. **Create register**: Set up a `ModelRegister` to manage your models
+. **Register endpoints**: Map your models to specific API URLs
+
+=== Runtime phase
+
+. **Fetch resources**: Use `register.fetch()` to get data from the API
+. **Access attributes**: Work with resource data as normal Ruby objects
+. **Navigate links**: Use HAL links to move between related resources
+. **Realize links**: Convert links to actual resource instances
+
+== Next steps
+
+=== General
+
+Now that you understand the basics, you're ready to explore more advanced
+features:
+
+* link:data-definition-guide.adoc[Data Definition Guide] - Comprehensive model
+  setup and advanced resource configuration
+* link:runtime-usage-guide.adoc[Runtime Usage Guide] - Advanced fetching
+  patterns and navigation techniques
+* link:pagination-guide.adoc[Pagination Guide] - Working with paginated APIs
+  and large datasets
+
+== Common patterns
+
+=== Global register for automatic link resolution
+
+For more convenient link resolution, you can use a global register:
+
+[example]
+====
+[source,ruby]
+----
+# Set up global register
+global_register = Lutaml::Hal::GlobalRegister.instance
+global_register.register(:my_api_register, register)
+
+# Now links can be realized without passing the register
+category = product.links.category.realize
+----
+====
+
+=== Query parameters
+
+Add query parameters to your endpoints for filtering and pagination:
+
+[example]
+====
+[source,ruby]
+----
+register.add_endpoint(
+  id: :product_search,
+  type: :index,
+  url: '/products',
+  model: MyApi::Product,
+  query_params: {
+    'category' => '{category}',
+    'page' => '{page}',
+    'limit' => '{limit}'
+  }
+)
+
+# Use with parameters
+results = register.fetch(
+  :product_search,
+  category: 'electronics',
+  page: 1,
+  limit: 10
+)
+----
+====
+
+=== Error handling
+
+Always handle potential API errors:
+
+[example]
+====
+[source,ruby]
+----
+begin
+  product = register.fetch(:product_resource, id: '123')
+rescue Lutaml::Hal::Errors::ApiError => e
+  puts "API Error: #{e.message}"
+rescue Lutaml::Hal::Errors::NotFoundError => e
+  puts "Product not found: #{e.message}"
+end
+----
+====
+
+This completes your introduction to `lutaml-hal`. You now have the foundation
+to build sophisticated HAL API clients.

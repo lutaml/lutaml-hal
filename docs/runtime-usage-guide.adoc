@@ -1,0 +1,605 @@
+= Runtime usage guide
+
+== General
+
+This guide covers all runtime operations for working with HAL APIs using
+`lutaml-hal`. Once you've completed the data definition phase, you can use
+these patterns to fetch resources, navigate links, and handle pagination.
+
+Before starting this guide, complete the
+link:getting-started-guide.adoc[Getting started guide] and
+link:data-definition-guide.adoc[Data definition guide].
+
+== Overview
+
+=== General
+
+NOTE: The `lutaml-hal` library currently only supports synchronous data
+fetching. Asynchronous data fetching will be supported in the future.
+
+NOTE: The `lutaml-hal` library currently only supports data fetching requests
+(GET) today. Additional features may be provided in the future.
+
+Once the data definition is complete, you can use the `ModelRegister` to fetch
+and interact with resources from the API.
+
+The runtime phase involves several key operations:
+
+. Fetch resources from the API using the `ModelRegister`
+. Access resource attributes and navigate through links
+. Realize links to fetch related resources
+. Handle pagination for large datasets
+
+== Fetching a resource
+
+=== General
+
+The `ModelRegister` allows you to fetch resources from the API using the
+`fetch` method.
+
+NOTE: The endpoint of the resource must be already defined through the
+`add_endpoint` method.
+
+The `fetch` method will automatically handle the URL resolution and fetch the
+resource from the API.
+
+=== Syntax
+
+[source,ruby]
+----
+register.fetch(:resource_endpoint_id, {parameters})
+----
+
+Where:
+
+`resource_endpoint_id`:: The ID of the endpoint registered in the
+`ModelRegister`.
+`parameters`:: A hash of parameters to be passed to the API. The parameters
+are used to replace the interpolation parameters in the URL.
+`register`:: The instance of `ModelRegister`.
+
+=== Fetch a resource directly from the API
+
+[example]
+====
+[source,ruby]
+----
+product_1 = register.fetch(:product_resource, id: 1)
+# => client.get('/products/1')
+
+# => {
+#   "id": 1,
+#   "name": "Product 1",
+#   "price": 10.0,
+#   "_links": {
+#     "self": { "href": "/products/1" },
+#     "category": { "href": "/categories/1", "title": "Category 1" },
+#     "related": [
+#        { "href": "/products/3", "title": "Product 3" },
+#        { "href": "/products/5", "title": "Product 5" }
+#     ]
+#   }
+# }
+
+product_1
+# => #<Product id: 1, name: "Product 1", price: 10.0, links:
+#      #<ProductLinkSet self: <ProductLink href: "/products/1">,
+#                     category: <ProductLink href: "/categories/1", title: "Category 1">,
+#                     related: [
+#                         <ProductLink href: "/products/3", title: "Product 3">,
+#                         <ProductLink href: "/products/5", title: "Product 5">
+#                     ]>>
+----
+====
+
+== Fetching a resource index
+
+=== General
+
+In HAL, collections are provided via the `_links` or the `_embedded` sections
+of the response.
+
+NOTE: The `_embedded` section is not yet supported by the `Lutaml::Hal`
+library.
+
+The `ModelRegister` allows you to define endpoints for collections and fetch
+them using the `fetch` method.
+
+The `fetch` method will automatically handle the URL resolution and fetch the
+resource index from the API.
+
+=== Syntax
+
+[source,ruby]
+----
+register.fetch(:index_endpoint_id)
+----
+
+Where:
+
+`index_endpoint_id`:: The ID of the endpoint registered in the `ModelRegister`.
+`register`:: The instance of `ModelRegister`.
+
+=== Fetch a collection of resources from the API
+
+[example]
+====
+[source,ruby]
+----
+product_index = register.fetch(:product_index)
+# => client.get('/products')
+
+# => {
+# "page": 1,
+# "pages": 10,
+# "limit": 10,
+# "total": 45,
+# "_links": {
+#   "self": { "href": "/products/1" },
+#   "next": { "href": "/products/2" },
+#   "last": { "href": "/products/5" },
+#   "products": [
+#     { "href": "/products/1", "title": "Product 1" },
+#     { "href": "/products/2", "title": "Product 2" }
+#   ]
+# }
+
+product_index
+# => #<ProductPage page: 1, pages: 10, limit: 10, total: 45,
+#      links: #<ProductLinkSet self: <ProductLink href: "/products/1">,
+#                     next: <ProductLink href: "/products/2">,
+#                     last: <ProductLink href: "/products/5">,
+#                     products: <ProductLinkSet
+#                         <ProductLink href: "/products/1", title: "Product 1">,
+#                         <ProductLink href: "/products/2", title: "Product 2">
+#                     ]>>
+----
+====
+
+== Fetching a resource via link realization
+
+=== General
+
+Given a resource index that contains links to resources, the individual
+resource links can be "realized" as actual model instances through the
+`Link#realize(register:)` method which dynamically retrieves the resource.
+
+Given a `Link` object, the `realize` method fetches the resource from the API
+using the provided `register`.
+
+There are two ways a resource gets realized from a `Link` object:
+
+* If a `Lutaml::Hal::GlobalRegister` is used, and the `Link` object originated
+  from a fetch using a `ModelRegister` then the `realize` method has
+  sufficient information to automatically fetch the resource from the API
+  using the same `register`.
++
+NOTE: This relies on the `Hal::REGISTER_ID_ATTR_NAME` attribute to be set in
+the `ModelRegister` class. This attribute is used to identify the resource
+endpoint ID in the URL.
+
+* If a `GlobalRegister` is not used, even if the Link object originated from a
+  fetch using a `ModelRegister`, the `realize` method does not have sufficient
+  information to fetch the resource from the API using the same `register`. In
+  this case an explicit `register` must be provided to the `realize(register:
+  ...)` method.
+
+=== Syntax for standalone usage
+
+[source,ruby]
+----
+Lutaml::Model::Link.new(
+  href: 'resource_endpoint_href',
+  # ... other attributes
+).realize(register)
+----
+
+Where:
+
+`resource_endpoint_href`:: The href of the resource endpoint. This is the URL
+of the resource as it appears in the `_links` section of the HAL resource.
+`register`:: The instance of `ModelRegister`.
+
+The `realize` method will automatically handle the URL resolution and fetch
+the resource from the API, and return an instance of the resource class
+defined in the `ModelRegister` (through the endpoint definition of
+`realize_class`).
+
+NOTE: It is possible to use the `realize` method on a link object using
+another `ModelRegister` instance. This is useful when you want to resolve a
+link using a different API endpoint or a different set of resource models.
+
+=== Syntax when using a GlobalRegister
+
+[source,ruby]
+----
+resource_index = model_register.fetch(:resource_index)
+resource_index.links.products.first.realize
+# => client.get('/resources/1')
+----
+
+=== Dynamically realizing a resource from the collection using links
+
+[example]
+====
+[source,ruby]
+----
+# Without a GlobalRegister
+product_2 = product_index.links.products.last.realize(register)
+
+# With a GlobalRegister
+product_2 = product_index.links.products.last.realize
+
+# => client.get('/products/2')
+# => {
+#   "id": 2,
+#   "name": "Product 2",
+#   "price": 20.0,
+#   "_links": {
+#     "self": { "href": "/products/2" },
+#     "category": { "href": "/categories/2", "title": "Category 2" },
+#     "related": [
+#        { "href": "/products/4", "title": "Product 4" },
+#        { "href": "/products/6", "title": "Product 6" }
+#     ]
+#   }
+# }
+
+product_2
+# => #<Product id: 2, name: "Product 2", price: 20.0, links:
+#      #<ProductLinkSet self: <ProductLink href: "/products/2">,
+#                     category: <ProductLink href: "/categories/2", title: "Category 2">,
+#                     related: [
+#                         <ProductLink href: "/products/4", title: "Product 4">,
+#                         <ProductLink href: "/products/6", title: "Product 6">
+#                     ]>>
+
+# Without a GlobalRegister
+product_2_related_1 = product_2.links.related.first.realize(register)
+
+# With a GlobalRegister
+product_2_related_1 = product_2.links.related.first.realize
+----
+====
+
+== Handling HAL pages and pagination
+
+=== General
+
+The `Lutaml::Hal::Page` class is used to handle pagination in HAL APIs.
+
+As described in the link:data-definition-guide.adoc[Data definition guide],
+subclassing the `Page` class provides pagination capabilities, including the
+management of links to navigate through pages of resources.
+
+=== Pagination navigation methods
+
+The `Page` class provides several convenience methods for navigating through
+paginated results:
+
+`#next_page`:: Returns the next page link if available, `nil` otherwise.
+
+`#prev_page`:: Returns the previous page link if available, `nil` otherwise.
+
+`#first_page`:: Returns the first page link if available, `nil` otherwise.
+
+`#last_page`:: Returns the last page link if available, `nil` otherwise.
+
+These methods return `Link` objects that can be realized using the `realize`
+method:
+
+[source,ruby]
+----
+# Navigate to next page
+if current_page.next_page
+  next_page = current_page.next_page.realize
+end
+
+# Navigate to previous page
+if current_page.prev_page
+  prev_page = current_page.prev_page.realize
+end
+
+# Jump to first or last page
+first_page = current_page.first_page.realize if current_page.first_page
+last_page = current_page.last_page.realize if current_page.last_page
+----
+
+=== Pagination helper methods
+
+The `Page` class also provides helper methods to check the availability of
+navigation links:
+
+`#has_next?`:: Returns `true` if there is a next page available, `false`
+otherwise.
+
+`#has_prev?`:: Returns `true` if there is a previous page available, `false`
+otherwise.
+
+`#has_first?`:: Returns `true` if there is a first page link available,
+`false` otherwise.
+
+`#has_last?`:: Returns `true` if there is a last page link available, `false`
+otherwise.
+
+`#total_pages`:: Returns the total number of pages (alias for the `pages`
+attribute).
+
+=== Exhaustive pagination
+
+For scenarios where you need to process all pages of results, you can combine
+the pagination methods:
+
+[source,ruby]
+----
+current_page = register.fetch(:resource_index)
+
+while current_page
+  # Process current page
+  puts "Processing page #{current_page.page} of #{current_page.total_pages}"
+
+  # Move to next page
+  current_page = current_page.next
+end
+----
+
+=== Usage example of the Page class
+
+==== Declaration
+
+[source,ruby]
+----
+class ResourceIndex < Lutaml::Hal::Page
+  # No attribute definition necessary
+end
+
+register.add_endpoint(
+  id: :resource_index,
+  type: :index,
+  url: '/resources',
+  model: ResourceIndex
+)
+----
+
+==== Usage
+
+[example]
+====
+[source,ruby]
+----
+page_1 = register.fetch(:resource_index)
+# => client.get('/resources')
+# => {
+#   "page": 1,
+#   "pages": 10,
+#   "limit": 10,
+#   "total": 100,
+#   "_links": {
+#     "self": {
+#       "href": "https://api.example.com/resources?page=1&items=10"
+#     },
+#     "first": {
+#       "href": "https://api.example.com/resources?page=1&items=10"
+#     },
+#     "last": {
+#       "href": "https://api.example.com/resources?page=10&items=10"
+#     },
+#     "next": {
+#       "href": "https://api.example.com/resources?page=2&items=10"
+#     }
+#   }
+# }
+
+page_1
+# => #<ResourceIndex page: 1, pages: 10, limit: 10, total: 100,
+#      links: #<ResourceIndexLinks
+#                self: #<ResourceIndexLink href: "/resources?page=1&items=10">,
+#                next: #<ResourceIndexLink href: "/resources?page=2&items=10">,
+#                last: #<ResourceIndexLink href: "/resources?page=10&items=10">>>
+
+# Check if navigation is available
+page_1.has_next?    # => true
+page_1.has_prev?    # => false
+page_1.total_pages  # => 10
+
+# Navigate using convenience methods
+page_2 = page_1.next
+# => client.get('/resources?page=2&items=10')
+# => #<ResourceIndex page: 2, pages: 10, limit: 10, total: 100, ...>
+
+page_2.has_prev?    # => true
+page_2.has_next?    # => true
+
+# Navigate back to first page
+first_page = page_2.first
+# => client.get('/resources?page=1&items=10')
+
+# Jump to last page
+last_page = page_2.last
+# => client.get('/resources?page=10&items=10')
+
+# Alternative: using link realization (original method)
+# Without a GlobalRegister
+page_2 = page_1.links.next.realize(register)
+
+# With a GlobalRegister
+page_2 = page_1.links.next.realize
+
+# => client.get('/resources?page=2&items=10')
+# => #<ResourceIndex page: 2, pages: 10, limit: 10, total: 100,
+#      links: #<ResourceIndexLinks
+#                self: #<ResourceIndexLink href: "/resources?page=2&items=10">,
+#                prev: #<ResourceIndexLink href: "/resources?page=1&items=10">,
+#                next: #<ResourceIndexLink href: "/resources?page=3&items=10">,
+#                first: #<ResourceIndexLink href: "/resources?page=1&items=10">,
+#                last: #<ResourceIndexLink href: "/resources?page=10&items=10">>>,
+#                prev: #<ResourceIndexLink href: "/resources?page=1&items=10">>>
+----
+====
+
+== Advanced runtime patterns
+
+=== Error handling
+
+Always handle potential API errors when fetching resources:
+
+[example]
+====
+[source,ruby]
+----
+begin
+  product = register.fetch(:product_resource, id: '123')
+  puts "Successfully fetched: #{product.name}"
+rescue Lutaml::Hal::Errors::ApiError => e
+  puts "API Error: #{e.message}"
+rescue Lutaml::Hal::Errors::NotFoundError => e
+  puts "Resource not found: #{e.message}"
+rescue StandardError => e
+  puts "Unexpected error: #{e.message}"
+end
+----
+====
+
+=== Conditional link realization
+
+Check if links exist before attempting to realize them:
+
+[example]
+====
+[source,ruby]
+----
+product = register.fetch(:product_resource, id: '123')
+
+# Check if category link exists
+if product.links.respond_to?(:category) && product.links.category
+  category = product.links.category.realize
+  puts "Category: #{category.name}"
+else
+  puts "No category associated with this product"
+end
+
+# Handle collections of links
+if product.links.respond_to?(:related) && product.links.related.any?
+  related_products = product.links.related.map(&:realize)
+  puts "Related products: #{related_products.map(&:name).join(', ')}"
+end
+----
+====
+
+=== Batch processing with pagination
+
+Process all pages of a paginated resource efficiently:
+
+[example]
+====
+[source,ruby]
+----
+def process_all_products(register)
+  current_page = register.fetch(:product_index)
+  all_products = []
+
+  loop do
+    # Process current page
+    puts "Processing page #{current_page.page} of #{current_page.total_pages}"
+
+    # Extract products from current page (assuming products are in links)
+    if current_page.links.respond_to?(:products)
+      page_products = current_page.links.products.map(&:realize)
+      all_products.concat(page_products)
+    end
+
+    # Move to next page or break if no more pages
+    break unless current_page.has_next?
+    current_page = current_page.next_page.realize
+  end
+
+  puts "Processed #{all_products.length} total products"
+  all_products
+end
+----
+====
+
+=== Resource caching
+
+Implement simple caching to avoid redundant API calls:
+
+[example]
+====
+[source,ruby]
+----
+class CachedRegister
+  def initialize(register)
+    @register = register
+    @cache = {}
+  end
+
+  def fetch(endpoint_id, **params)
+    cache_key = [endpoint_id, params].hash
+
+    @cache[cache_key] ||= @register.fetch(endpoint_id, **params)
+  end
+
+  def clear_cache
+    @cache.clear
+  end
+end
+
+# Usage
+cached_register = CachedRegister.new(register)
+product1 = cached_register.fetch(:product_resource, id: '123')  # API call
+product2 = cached_register.fetch(:product_resource, id: '123')  # From cache
+----
+====
+
+=== Working with query parameters
+
+Use query parameters for filtering and searching:
+
+[example]
+====
+[source,ruby]
+----
+# Assuming you've registered an endpoint with query parameters
+register.add_endpoint(
+  id: :product_search,
+  type: :index,
+  url: '/products',
+  model: ProductIndex,
+  query_params: {
+    'category' => '{category}',
+    'min_price' => '{min_price}',
+    'max_price' => '{max_price}',
+    'sort' => '{sort}',
+    'page' => '{page}'
+  }
+)
+
+# Search for electronics under $100, sorted by price
+results = register.fetch(
+  :product_search,
+  category: 'electronics',
+  min_price: 0,
+  max_price: 100,
+  sort: 'price_asc',
+  page: 1
+)
+
+puts "Found #{results.total} products"
+----
+====
+
+== Next steps
+
+=== General
+
+Now that you understand runtime operations, explore these advanced topics:
+
+* link:pagination-guide.adoc[Pagination Guide] - Advanced pagination patterns
+  and strategies
+* link:hal-links-reference.adoc[HAL Links Reference] - Customizing link
+  behavior and attributes
+* link:complex-path-patterns.adoc[Complex Path Patterns] - Sophisticated URL
+  patterns for complex APIs
+
+For comprehensive examples combining data definition and runtime usage, see
+the link:getting-started-guide.adoc[Getting started guide].
