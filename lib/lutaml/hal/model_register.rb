@@ -46,7 +46,7 @@ module Lutaml
       end
 
       # Register an endpoint using block configuration syntax
-      def register_endpoint(id, model, type: :index, &block)
+      def register_endpoint(id, model, type: :index)
         config = EndpointConfiguration.new
         yield(config) if block_given?
 
