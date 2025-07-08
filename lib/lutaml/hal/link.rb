@@ -11,6 +11,9 @@ module Lutaml
       # will be used to resolve unless overriden in resource#realize()
       attr_accessor Hal::REGISTER_ID_ATTR_NAME.to_sym
 
+      # Store reference to parent resource for automatic embedded content detection
+      attr_accessor :parent_resource
+
       attribute :href, :string
       attribute :title, :string
       attribute :name, :string
@@ -25,8 +28,11 @@ module Lutaml
       # If the Link does not have a register, a register needs to be provided explicitly
       # via the `register:` parameter.
       def realize(register: nil, parent_resource: nil)
+        # Use provided parent_resource or fall back to stored parent_resource
+        effective_parent = parent_resource || @parent_resource
+
         # First check if embedded content is available
-        if parent_resource && (embedded_content = check_embedded_content(parent_resource, register))
+        if effective_parent && (embedded_content = check_embedded_content(effective_parent, register))
           return embedded_content
         end
 

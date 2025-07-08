@@ -134,7 +134,14 @@ module Lutaml
 
           # Handle both array and single values with the same logic
           values = value.is_a?(Array) ? value : [value]
-          values.each { |item| mark_model_links_with_register(item) }
+          values.each do |item|
+            mark_model_links_with_register(item)
+
+            # If this is a Link, set the parent resource for automatic embedded content detection
+            if item.is_a?(Lutaml::Hal::Link)
+              item.parent_resource = inspecting_model
+            end
+          end
         end
 
         inspecting_model
