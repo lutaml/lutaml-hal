@@ -126,7 +126,7 @@ For detailed documentation, see these comprehensive guides:
   URL patterns and path matching examples
 
 * **link:docs/embedded-resources.adoc[Embedded resources]** - Implementing and
-using embedded resources in HAL APIs
+using embedded resources in HAL APIs with automatic link realization
 
 
 === Architecture overview

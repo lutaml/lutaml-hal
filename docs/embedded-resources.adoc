@@ -174,3 +174,34 @@ products.links.products.each do |product_link|
 end
 ----
 
+
+=== Auto-realize
+
+The library supports HAL embedded resources with automatic link realization for
+optimal performance:
+
+[source,ruby]
+----
+# Fetch resource with embedded content
+products = register.fetch(:product_index, embed: true, items: 5)
+
+# Links automatically use embedded content when available
+products.links.products.each do |product_link|
+  # This uses embedded data automatically - no HTTP request needed!
+  product = product_link.realize
+  puts product.name
+end
+
+# Without embed: each realize() would make a separate HTTP request
+# With embed: all data is available immediately from embedded content
+----
+
+The auto-realize functionality works by:
+
+. **Automatic parent resource detection**: Links store references to their parent resources
+. **Embedded content checking**: Before making HTTP requests, links check for embedded data
+. **Seamless fallback**: If no embedded content is available, normal HTTP requests are made
+
+This provides significant performance improvements for APIs that support embedding,
+reducing the number of HTTP requests from N+1 to just 1.
+
