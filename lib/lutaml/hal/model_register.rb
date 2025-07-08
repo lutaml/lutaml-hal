@@ -138,9 +138,7 @@ module Lutaml
             mark_model_links_with_register(item)
 
             # If this is a Link, set the parent resource for automatic embedded content detection
-            if item.is_a?(Lutaml::Hal::Link)
-              item.parent_resource = inspecting_model
-            end
+            item.parent_resource = inspecting_model if item.is_a?(Lutaml::Hal::Link)
           end
         end
 
