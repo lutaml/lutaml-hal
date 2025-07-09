@@ -109,12 +109,14 @@ module Lutaml
         when 404
           raise NotFoundError, response_message(response)
         when 429
-          raise TooManyRequestsError.new(response_message(response)).tap do |error|
+          TooManyRequestsError.new(response_message(response)).tap do |error|
             error.define_singleton_method(:response) { { status: response.status, headers: response.headers } }
+            raise error
           end
         when 500..599
-          raise ServerError.new(response_message(response)).tap do |error|
+          ServerError.new(response_message(response)).tap do |error|
             error.define_singleton_method(:response) { { status: response.status, headers: response.headers } }
+            raise error
           end
         else
           raise Error, response_message(response)
