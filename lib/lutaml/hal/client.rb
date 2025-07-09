@@ -51,13 +51,13 @@ module Lutaml
         @cache[cache_key] = response if @cache_enabled
         response
       rescue Faraday::ConnectionFailed => e
-        raise ConnectionError, "Connection failed: #{e.message}"
+        raise Lutaml::Hal::ConnectionError, "Connection failed: #{e.message}"
       rescue Faraday::TimeoutError => e
-        raise TimeoutError, "Request timed out: #{e.message}"
+        raise Lutaml::Hal::TimeoutError, "Request timed out: #{e.message}"
       rescue Faraday::ParsingError => e
-        raise ParsingError, "Response parsing error: #{e.message}"
+        raise Lutaml::Hal::ParsingError, "Response parsing error: #{e.message}"
       rescue Faraday::Adapter::Test::Stubs::NotFound => e
-        raise LinkResolutionError, "Resource not found: #{e.message}"
+        raise Lutaml::Hal::LinkResolutionError, "Resource not found: #{e.message}"
       end
 
       # Make a GET request with custom headers
@@ -76,13 +76,13 @@ module Lutaml
         @cache[cache_key] = response if @cache_enabled
         response
       rescue Faraday::ConnectionFailed => e
-        raise ConnectionError, "Connection failed: #{e.message}"
+        raise Lutaml::Hal::ConnectionError, "Connection failed: #{e.message}"
       rescue Faraday::TimeoutError => e
-        raise TimeoutError, "Request timed out: #{e.message}"
+        raise Lutaml::Hal::TimeoutError, "Request timed out: #{e.message}"
       rescue Faraday::ParsingError => e
-        raise ParsingError, "Response parsing error: #{e.message}"
+        raise Lutaml::Hal::ParsingError, "Response parsing error: #{e.message}"
       rescue Faraday::Adapter::Test::Stubs::NotFound => e
-        raise LinkResolutionError, "Resource not found: #{e.message}"
+        raise Lutaml::Hal::LinkResolutionError, "Resource not found: #{e.message}"
       end
 
       private
