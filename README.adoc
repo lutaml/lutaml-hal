@@ -31,6 +31,7 @@ APIs.
 * Integration with the `lutaml-model` serialization framework
 * Error handling and response validation for API interactions
 * Comprehensive embed support for reducing HTTP requests and improving performance
+* Built-in rate limiting with exponential backoff and retry logic
 
 == Installation
 

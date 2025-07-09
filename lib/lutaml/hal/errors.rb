@@ -9,5 +9,8 @@ module Lutaml
     class ServerError < Error; end
     class LinkResolutionError < Error; end
     class ParsingError < Error; end
+    class ConnectionError < Error; end
+    class TimeoutError < Error; end
+    class TooManyRequestsError < Error; end
   end
 end
