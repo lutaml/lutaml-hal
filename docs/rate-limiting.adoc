@@ -1,0 +1,391 @@
+= Rate limiting
+
+This document covers the built-in rate limiting functionality in lutaml-hal,
+which provides automatic retry logic with exponential backoff for handling API
+rate limits.
+
+Rate limiting is a common practice in APIs to prevent abuse and ensure fair
+usage.
+
+== Overview
+
+The lutaml-hal library includes comprehensive rate limiting support that:
+
+* Automatically retries requests when encountering rate limits
+* Uses exponential backoff to avoid overwhelming the server
+* Respects server-provided retry timing
+* Can be configured or disabled as needed
+
+The library includes built-in rate limiting with exponential backoff to handle
+API rate limits gracefully.
+
+Rate limiting is enabled by default and automatically retries requests when
+encountering HTTP 429 (Too Many Requests) or 5xx server errors.
+
+Rate limiting can be configured globally:
+
+[example]
+====
+[source,ruby]
+----
+# Configure rate limiting parameters
+client.configure_rate_limiting(
+  max_retries: 3,        # Maximum number of retry attempts
+  base_delay: 1.0,       # Initial delay in seconds
+  max_delay: 60.0,       # Maximum delay cap in seconds
+  backoff_factor: 2.0    # Exponential backoff multiplier
+)
+
+# Disable rate limiting temporarily
+client.disable_rate_limiting
+
+# Re-enable rate limiting
+client.enable_rate_limiting
+
+# Check if rate limiting is enabled
+puts client.rate_limiting_enabled?
+----
+====
+
+
+The rate limiter uses the following algorithm:
+
+. Make the initial HTTP request
+. If the response is 429 or 5xx, determine if retry should be attempted
+. Calculate delay using either `Retry-After` header or exponential backoff
+. Wait for the calculated delay (with jitter)
+. Retry the request up to the maximum retry limit
+
+
+== Default behavior
+
+Rate limiting is **enabled by default** with these settings:
+
+Maximum retries:: 3
+Base delay:: 1.0 seconds
+Maximum delay:: 60.0 seconds
+Backoff factor:: 2.0
+
+The rate limiter automatically handles:
+
+* HTTP `429` (Too Many Requests) responses
+* HTTP `5xx` server error responses
+* `Retry-After` headers from the server
+
+
+== Configuration
+
+=== Global configuration
+
+Configure rate limiting globally for all clients:
+
+[source,ruby]
+----
+# Configure with custom parameters
+client.configure_rate_limiting(
+  max_retries: 5, <1>
+  base_delay: 0.5, <2>
+  max_delay: 30.0, <3>
+  backoff_factor: 1.5 <4>
+)
+----
+<1> Maximum number of retry attempts
+<2> Initial delay in seconds
+<3> Maximum delay cap in seconds
+<4> Exponential backoff multiplier
+
+
+=== Enable/disable rate limiting
+
+[source,ruby]
+----
+# Disable rate limiting temporarily
+client.disable_rate_limiting
+
+# Perform operations without rate limiting
+1000.times do |i|
+  register.fetch(:product_resource, id: i)
+end
+
+# Re-enable rate limiting
+client.enable_rate_limiting
+
+# Check current status
+if client.rate_limiting_enabled?
+  puts "Rate limiting is active"
+end
+----
+
+== Algorithm
+
+The rate limiting algorithm follows these steps:
+
+. **Initial Request**: Make the HTTP request normally
+. **Error Detection**: Check for 429 or 5xx status codes
+. **Retry Decision**: Determine if retry should be attempted based on:
+** Current retry count vs. max_retries
+** Error type (429 or 5xx)
+. **Delay Calculation**:
+** Use `Retry-After` header if present
+** Otherwise use exponential backoff: `base_delay * (backoff_factor ^ retry_count)`
+** Cap at `max_delay`
+** Add jitter to prevent synchronized retries
+. **Wait and Retry**: Sleep for calculated delay, then retry request
+
+=== Exponential Backoff Formula
+
+The delay for each retry is calculated as:
+
+----
+delay = min(base_delay * (backoff_factor ^ retry_count), max_delay)
+----
+
+With default settings:
+
+* Retry 1: 1.0 seconds
+* Retry 2: 2.0 seconds
+* Retry 3: 4.0 seconds
+
+=== Jitter
+
+A small random jitter (±10%) is added to prevent the "thundering herd" problem
+when multiple clients retry simultaneously.
+
+== Usage examples
+
+=== Basic usage
+
+Rate limiting works transparently with existing code:
+
+[source,ruby]
+----
+# Rate limiting is enabled by default
+client = Lutaml::Hal::Client.new(api_url: 'https://api.example.com')
+register = Lutaml::Hal::ModelRegister.new(name: :my_api, client: client)
+
+# This request will automatically retry if rate limited
+product = register.fetch(:product_resource, id: '123')
+----
+
+=== Configuration for high-volume APIs
+
+[source,ruby]
+----
+# Configure for APIs with strict rate limits
+client.configure_rate_limiting(
+  max_retries: 5,        # More retry attempts
+  base_delay: 2.0,       # Longer initial delay
+  max_delay: 120.0,      # Higher delay cap
+  backoff_factor: 1.5    # Gentler backoff
+)
+
+# Make requests - they'll be automatically rate limited
+products = []
+100.times do |i|
+  products << register.fetch(:product_resource, id: i)
+end
+----
+
+=== Bulk operations
+
+[source,ruby]
+----
+# Disable rate limiting for bulk operations where you control the rate
+client.disable_rate_limiting
+
+bulk_data = []
+product_ids.each_slice(10) do |batch|
+  batch.each do |id|
+    bulk_data << register.fetch(:product_resource, id: id)
+  end
+
+  # Manual rate limiting
+  sleep(1.0)
+end
+
+# Re-enable for normal operations
+client.enable_rate_limiting
+----
+
+== Error handling
+
+Rate limiting errors are handled automatically, but you can catch specific exceptions:
+
+[source,ruby]
+----
+begin
+  product = register.fetch(:product_resource, id: '123')
+rescue Lutaml::Hal::Errors::RateLimitError => e
+  puts "Rate limit exceeded after all retries: #{e.message}"
+rescue Lutaml::Hal::Errors::ApiError => e
+  puts "API Error: #{e.message}"
+end
+----
+
+
+== Best practices
+
+=== Use default settings initially
+
+Start with the default rate limiting settings and adjust based on your API's behavior:
+
+[source,ruby]
+----
+# Start with defaults
+client = Lutaml::Hal::Client.new(api_url: 'https://api.example.com')
+
+# Monitor and adjust if needed
+client.configure_rate_limiting(max_retries: 5) if api_is_strict
+----
+
+=== Respect server timing
+
+The rate limiter automatically respects `Retry-After` headers, but you can also
+implement additional delays:
+
+[source,ruby]
+----
+# For very strict APIs, add manual delays
+products = []
+product_ids.each do |id|
+  products << register.fetch(:product_resource, id: id)
+  sleep(0.1)  # Additional 100ms delay between requests
+end
+----
+
+=== Monitor rate limiting events
+
+Enable debug logging to monitor rate limiting behavior:
+
+[source,ruby]
+----
+# Enable debug logging
+ENV['DEBUG_API'] = 'true'
+
+# Rate limiting events will be logged
+product = register.fetch(:product_resource, id: '123')
+----
+
+=== Configure based on api documentation
+
+Adjust settings based on your API's documented rate limits:
+
+[source,ruby]
+----
+# Example: API allows 100 requests per minute
+# Configure conservative settings
+client.configure_rate_limiting(
+  max_retries: 3,
+  base_delay: 1.0,      # Start with 1 second
+  max_delay: 60.0,      # Cap at 1 minute
+  backoff_factor: 2.0   # Double each time
+)
+----
+
+=== Tips
+
+**Batch Operations**: Group related requests when possible
+**Caching**: Cache frequently accessed resources
+**Pagination**: Use appropriate page sizes to reduce request count
+**Monitoring**: Track rate limiting events to optimize settings
+
+
+== Troubleshooting
+
+=== Common issues
+
+**Requests Still Failing After Retries**
+
+Check if the API has additional rate limiting beyond HTTP 429:
+
+[source,ruby]
+----
+# Increase retry attempts and delays
+client.configure_rate_limiting(
+  max_retries: 10,
+  base_delay: 2.0,
+  max_delay: 300.0
+)
+----
+
+**Too Many Delays in Normal Operation**
+
+The API might be returning 5xx errors frequently:
+
+[source,ruby]
+----
+# Reduce sensitivity to server errors
+# (Note: This requires custom implementation)
+# Consider only retrying on 429, not 5xx
+----
+
+**Inconsistent Behavior**
+
+Enable debug logging to understand what's happening:
+
+[source,ruby]
+----
+ENV['DEBUG_API'] = 'true'
+# Check logs for rate limiting events
+----
+
+=== Debug information
+
+When debug logging is enabled, you'll see messages like:
+
+```
+[Lutaml::Hal] DEBUG: Rate limit hit, retrying in 2.1 seconds (attempt 1/3)
+[Lutaml::Hal] DEBUG: Retry-After header found: 5 seconds
+[Lutaml::Hal] DEBUG: Rate limiting disabled for this request
+```
+
+== Advanced configuration
+
+=== Custom rate limiting logic
+
+For advanced use cases, you can implement custom rate limiting:
+
+[source,ruby]
+----
+# Disable built-in rate limiting
+client.disable_rate_limiting
+
+# Implement custom logic
+def fetch_with_custom_rate_limiting(register, endpoint, params)
+  retries = 0
+  max_retries = 5
+
+  begin
+    register.fetch(endpoint, params)
+  rescue Lutaml::Hal::Errors::ApiError => e
+    if e.response.status == 429 && retries < max_retries
+      delay = calculate_custom_delay(retries, e.response.headers)
+      sleep(delay)
+      retries += 1
+      retry
+    else
+      raise
+    end
+  end
+end
+----
+
+=== Per-endpoint configuration
+
+While not directly supported, you can implement per-endpoint rate limiting:
+
+[source,ruby]
+----
+# Configure different settings for different operations
+def configure_for_endpoint(client, endpoint_type)
+  case endpoint_type
+  when :bulk_operation
+    client.configure_rate_limiting(max_retries: 1, base_delay: 0.1)
+  when :critical_operation
+    client.configure_rate_limiting(max_retries: 10, base_delay: 2.0)
+  else
+    client.configure_rate_limiting(max_retries: 3, base_delay: 1.0)
+  end
+end
+----
+

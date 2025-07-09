@@ -5,12 +5,13 @@ require 'faraday/follow_redirects'
 require 'json'
 require 'rainbow'
 require_relative 'errors'
+require_relative 'rate_limiter'
 
 module Lutaml
   module Hal
     # HAL Client for making HTTP requests to HAL APIs
     class Client
-      attr_reader :last_response, :api_url, :connection
+      attr_reader :last_response, :api_url, :connection, :rate_limiter
 
       def initialize(options = {})
         @api_url = options[:api_url] || raise(ArgumentError, 'api_url is required')
@@ -19,6 +20,7 @@ module Lutaml
         @debug = options[:debug] || !ENV['DEBUG_API'].nil?
         @cache = options[:cache] || {}
         @cache_enabled = options[:cache_enabled] || false
+        @rate_limiter = options[:rate_limiter] || RateLimiter.new(options[:rate_limiting] || {})
 
         @api_url = strip_api_url(@api_url)
       end
@@ -41,9 +43,10 @@ module Lutaml
 
         return @cache[cache_key] if @cache_enabled && @cache.key?(cache_key)
 
-        @last_response = @connection.get(url, params)
-
-        response = handle_response(@last_response, url)
+        response = @rate_limiter.with_rate_limiting do
+          @last_response = @connection.get(url, params)
+          handle_response(@last_response, url)
+        end
 
         @cache[cache_key] = response if @cache_enabled
         response
@@ -63,11 +66,12 @@ module Lutaml
 
         return @cache[cache_key] if @cache_enabled && @cache.key?(cache_key)
 
-        @last_response = @connection.get(url) do |req|
-          headers.each { |key, value| req.headers[key] = value }
+        response = @rate_limiter.with_rate_limiting do
+          @last_response = @connection.get(url) do |req|
+            headers.each { |key, value| req.headers[key] = value }
+          end
+          handle_response(@last_response, url)
         end
-
-        response = handle_response(@last_response, url)
 
         @cache[cache_key] = response if @cache_enabled
         response
@@ -104,8 +108,14 @@ module Lutaml
           raise UnauthorizedError, response_message(response)
         when 404
           raise NotFoundError, response_message(response)
+        when 429
+          raise TooManyRequestsError.new(response_message(response)).tap do |error|
+            error.define_singleton_method(:response) { { status: response.status, headers: response.headers } }
+          end
         when 500..599
-          raise ServerError, response_message(response)
+          raise ServerError.new(response_message(response)).tap do |error|
+            error.define_singleton_method(:response) { { status: response.status, headers: response.headers } }
+          end
         else
           raise Error, response_message(response)
         end
