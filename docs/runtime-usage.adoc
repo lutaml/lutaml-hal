@@ -1,14 +1,14 @@
-= Runtime usage guide
+= Runtime usage
 
 == General
 
-This guide covers all runtime operations for working with HAL APIs using
+This document covers all runtime operations for working with HAL APIs using
 `lutaml-hal`. Once you've completed the data definition phase, you can use
 these patterns to fetch resources, navigate links, and handle pagination.
 
 Before starting this guide, complete the
-link:getting-started-guide.adoc[Getting started guide] and
-link:data-definition-guide.adoc[Data definition guide].
+link:getting-started-guide.adoc[Getting started] and
+link:data-definition-guide.adoc[Data definition].
 
 == Overview
 
@@ -268,7 +268,7 @@ product_2_related_1 = product_2.links.related.first.realize
 
 The `Lutaml::Hal::Page` class is used to handle pagination in HAL APIs.
 
-As described in the link:data-definition-guide.adoc[Data definition guide],
+As described in the link:data-definition-guide.adoc[Data definition],
 subclassing the `Page` class provides pagination capabilities, including the
 management of links to navigate through pages of resources.
 
@@ -795,7 +795,7 @@ puts "Found #{results.total} products"
 
 Now that you understand runtime operations, explore these advanced topics:
 
-* link:pagination-guide.adoc[Pagination guide] - Advanced pagination patterns
+* link:pagination-guide.adoc[Pagination] - Advanced pagination patterns
   and strategies
 * link:hal-links-reference.adoc[HAL links reference] - Customizing link
   behavior and attributes
@@ -803,4 +803,4 @@ Now that you understand runtime operations, explore these advanced topics:
   patterns for complex APIs
 
 For comprehensive examples combining data definition and runtime usage, see
-the link:getting-started-guide.adoc[Getting started guide].
+the link:getting-started-guide.adoc[Getting started].

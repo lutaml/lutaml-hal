@@ -1,8 +1,8 @@
-= Getting started guide
+= Getting started
 
 == General
 
-This guide provides a step-by-step tutorial for implementing your first HAL API
+This document provides a step-by-step tutorial for implementing your first HAL API
 client using `lutaml-hal`. You'll learn the essential concepts and create a
 working example in about 15 minutes.
 
@@ -281,11 +281,11 @@ The `lutaml-hal` workflow follows a two-phase approach:
 Now that you understand the basics, you're ready to explore more advanced
 features:
 
-* link:data-definition-guide.adoc[Data definition guide] - Comprehensive model
+* link:data-definition-guide.adoc[Data definition] - Comprehensive model
   setup and advanced resource configuration
-* link:runtime-usage-guide.adoc[Runtime usage guide] - Advanced fetching
+* link:runtime-usage-guide.adoc[Runtime usage] - Advanced fetching
   patterns and navigation techniques
-* link:pagination-guide.adoc[Pagination guide] - Working with paginated APIs
+* link:pagination-guide.adoc[Pagination] - Working with paginated APIs
   and large datasets
 
 == Common patterns

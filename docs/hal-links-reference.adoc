@@ -7,8 +7,8 @@ customizing HAL links in `lutaml-hal`. HAL links are the core mechanism for
 representing relationships between resources in a HAL API.
 
 This is an advanced reference document. Before using this guide, complete the
-link:getting-started-guide.adoc[Getting started guide] and
-link:data-definition-guide.adoc[Data definition guide].
+link:getting-started-guide.adoc[Getting started] and
+link:data-definition-guide.adoc[Data definition].
 
 == Overview
 
@@ -692,9 +692,9 @@ end
 
 Now that you understand HAL links in detail, explore these related topics:
 
-* link:pagination-guide.adoc[Pagination guide] - Using links for pagination
+* link:pagination-guide.adoc[Pagination] - Using links for pagination
   navigation
-* link:runtime-usage-guide.adoc[Runtime usage guide] - Practical link
+* link:runtime-usage-guide.adoc[Runtime usage] - Practical link
   realization patterns
 * link:complex-path-patterns.adoc[Complex path patterns] - Advanced URL
   patterns for sophisticated APIs
