@@ -1,14 +1,14 @@
-= Pagination guide
+= Pagination
 
 == General
 
-This guide provides comprehensive documentation for working with paginated HAL
+This document provides comprehensive documentation for working with paginated HAL
 APIs using `lutaml-hal`. Pagination allows APIs to return large datasets in
 manageable chunks, improving performance and user experience.
 
 Before starting this guide, complete the
-link:getting-started-guide.adoc[Getting started guide] and
-link:data-definition-guide.adoc[Data definition guide].
+link:getting-started-guide.adoc[Getting started] and
+link:data-definition-guide.adoc[Data definition].
 
 == Overview
 
@@ -796,7 +796,7 @@ end
 
 Now that you understand pagination thoroughly, explore these related topics:
 
-* link:runtime-usage-guide.adoc[Runtime usage guide] - Advanced fetching
+* link:runtime-usage-guide.adoc[Runtime usage] - Advanced fetching
   patterns and error handling
 * link:hal-links-reference.adoc[HAL links reference] - Customizing pagination
   link behavior
@@ -804,4 +804,4 @@ Now that you understand pagination thoroughly, explore these related topics:
   patterns for pagination endpoints
 
 For basic pagination setup, refer to the
-link:getting-started-guide.adoc[Getting started guide].
+link:getting-started-guide.adoc[Getting started].

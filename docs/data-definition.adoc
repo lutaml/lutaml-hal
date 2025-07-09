@@ -1,14 +1,14 @@
-= Data definition guide
+= Data definition
 
 == General
 
-This guide provides comprehensive documentation for defining HAL resources,
+This document provides comprehensive documentation for defining HAL resources,
 setting up model registers, and configuring API endpoints. This is the
 foundation phase where you establish the structure and relationships of your
 HAL API client.
 
 Before starting this guide, complete the
-link:getting-started-guide.adoc[Getting started guide] to understand basic
+link:getting-started-guide.adoc[Getting started] to understand basic
 concepts.
 
 == Overview
@@ -59,7 +59,7 @@ The `GlobalRegister` class is a singleton that manages one or more
 `ModelRegister` instances.
 
 It is optional, but is required for automatic realization of models from Link
-objects. See the link:runtime-usage-guide.adoc[Runtime usage guide] for more
+objects. See the link:runtime-usage-guide.adoc[Runtime usage] for more
 details on fetching resources via link realization.
 
 [example]
@@ -766,7 +766,7 @@ class must inherit from `Lutaml::Hal::Page`.
 
 === General
 
-HAL embed support allows endpoints to fetch resources with embedded content,
+HAL support for embed allows endpoints to fetch resources with embedded content,
 significantly reducing the number of HTTP requests needed to access related
 data. This is particularly useful for APIs that support HAL's `_embedded`
 section.
@@ -1038,9 +1038,9 @@ register.add_endpoint(
 Now that you understand how to define HAL resources and set up model
 registers, you're ready to learn about using these definitions at runtime:
 
-* link:runtime-usage-guide.adoc[Runtime usage guide] - Fetching resources,
+* link:runtime-usage-guide.adoc[Runtime usage] - Fetching resources,
   navigating links, and handling pagination
 * link:hal-links-reference.adoc[HAL links reference] - Advanced link
   configuration and customization
-* link:pagination-guide.adoc[Pagination guide] - Comprehensive pagination
+* link:pagination-guide.adoc[Pagination] - Comprehensive pagination
   patterns and navigation
