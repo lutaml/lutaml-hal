@@ -1,0 +1,671 @@
+= Error handling
+
+This document covers the error types available in lutaml-hal and how to handle
+them effectively in your applications.
+
+The lutaml-hal library provides a comprehensive set of custom error classes
+that help you handle different types of failures when working with HAL APIs.
+
+== Overview
+
+All lutaml-hal errors inherit from `Lutaml::Hal::Error`, which itself inherits
+from Ruby's `StandardError`. This allows you to catch all lutaml-hal specific
+errors with a single rescue clause if needed.
+
+The library automatically converts various types of failures into specific
+error types:
+
+* Network-level errors (connection failures, timeouts)
+* HTTP status code errors (4xx and 5xx responses)
+* Parsing errors (malformed JSON responses)
+* Resource resolution errors (broken HAL links)
+
+== Error hierarchy
+
+[source,ruby]
+----
+StandardError
+└── Lutaml::Hal::Error
+    ├── Lutaml::Hal::ConnectionError
+    ├── Lutaml::Hal::TimeoutError
+    ├── Lutaml::Hal::ParsingError
+    ├── Lutaml::Hal::LinkResolutionError
+    ├── Lutaml::Hal::BadRequestError
+    ├── Lutaml::Hal::UnauthorizedError
+    ├── Lutaml::Hal::NotFoundError
+    ├── Lutaml::Hal::TooManyRequestsError
+    └── Lutaml::Hal::ServerError
+----
+
+== Error types
+
+=== Network errors
+
+==== ConnectionError
+
+*When it occurs*: Network connection failures, DNS resolution failures, or
+when the server is unreachable.
+
+*Common causes*:
+
+* Server is down or unreachable
+* Network connectivity issues
+* Invalid hostname or URL
+* Firewall blocking the connection
+
+[example]
+====
+[source,ruby]
+----
+begin
+  client = Lutaml::Hal::Client.new(api_url: 'https://unreachable-server.com')
+  response = client.get('/api/products')
+rescue Lutaml::Hal::ConnectionError => e
+  puts "Failed to connect to server: #{e.message}"
+  # Handle connection failure (retry, fallback, etc.)
+end
+----
+====
+
+==== TimeoutError
+
+*When it occurs*: Request takes longer than the configured timeout period.
+
+*Common causes*:
+
+* Server is overloaded and responding slowly
+* Network latency issues
+* Large response payloads
+* Server-side processing delays
+
+[example]
+====
+[source,ruby]
+----
+begin
+  response = client.get('/api/large-dataset')
+rescue Lutaml::Hal::TimeoutError => e
+  puts "Request timed out: #{e.message}"
+  # Handle timeout (retry with longer timeout, use pagination, etc.)
+end
+----
+====
+
+=== HTTP status code errors
+
+==== BadRequestError (HTTP 400)
+
+*When it occurs*: The server cannot process the request due to client error.
+
+*Common causes*:
+
+* Invalid request parameters
+* Malformed request body
+* Missing required fields
+* Invalid data format
+
+[example]
+====
+[source,ruby]
+----
+begin
+  # Invalid parameter value
+  response = client.get('/api/products', { limit: 'invalid' })
+rescue Lutaml::Hal::BadRequestError => e
+  puts "Bad request: #{e.message}"
+  # Handle validation errors, fix parameters
+end
+----
+====
+
+==== UnauthorizedError (HTTP 401)
+
+*When it occurs*: Authentication is required or has failed.
+
+*Common causes*:
+
+* Missing authentication credentials
+* Invalid API key or token
+* Expired authentication token
+* Insufficient permissions
+
+[example]
+====
+[source,ruby]
+----
+begin
+  response = client.get_with_headers('/api/private-data', {
+    'Authorization' => 'Bearer invalid-token'
+  })
+rescue Lutaml::Hal::UnauthorizedError => e
+  puts "Authentication failed: #{e.message}"
+  # Handle auth failure (refresh token, re-authenticate, etc.)
+end
+----
+====
+
+==== NotFoundError (HTTP 404)
+
+*When it occurs*: The requested resource does not exist.
+
+*Common causes*:
+
+* Invalid resource ID
+* Resource has been deleted
+* Incorrect URL path
+* Resource moved to different location
+
+[example]
+====
+[source,ruby]
+----
+begin
+  response = client.get('/api/products/nonexistent-id')
+rescue Lutaml::Hal::NotFoundError => e
+  puts "Resource not found: #{e.message}"
+  # Handle missing resource (show error message, redirect, etc.)
+end
+----
+====
+
+==== TooManyRequestsError (HTTP 429)
+
+*When it occurs*: Rate limit has been exceeded.
+
+*Common causes*:
+
+* Making requests too quickly
+* Exceeding API quota limits
+* Concurrent requests from multiple clients
+
+*Special features*:
+
+* May include `response` method with status and headers
+* Often includes `Retry-After` header information
+
+[example]
+====
+[source,ruby]
+----
+begin
+  response = client.get('/api/products')
+rescue Lutaml::Hal::TooManyRequestsError => e
+  puts "Rate limit exceeded: #{e.message}"
+
+  # Check for retry information
+  if e.respond_to?(:response) && e.response[:headers]['Retry-After']
+    retry_after = e.response[:headers]['Retry-After'].to_i
+    puts "Retry after #{retry_after} seconds"
+    sleep(retry_after)
+    retry
+  end
+end
+----
+====
+
+==== ServerError (HTTP 5xx)
+
+*When it occurs*: Server-side errors (500, 502, 503, etc.).
+
+*Common causes*:
+
+* Internal server errors
+* Database connection issues
+* Service temporarily unavailable
+* Gateway timeouts
+
+*Special features*:
+
+* May include `response` method with status and headers
+* Often indicates temporary issues that may resolve with retry
+
+[example]
+====
+[source,ruby]
+----
+begin
+  response = client.get('/api/products')
+rescue Lutaml::Hal::ServerError => e
+  puts "Server error: #{e.message}"
+
+  # Check specific status code
+  if e.respond_to?(:response)
+    case e.response[:status]
+    when 502, 503
+      puts "Service temporarily unavailable, retrying..."
+      sleep(5)
+      retry
+    when 500
+      puts "Internal server error, contact support"
+    end
+  end
+end
+----
+====
+
+=== Parsing and resolution errors
+
+==== ParsingError
+
+*When it occurs*: Response cannot be parsed as expected JSON.
+
+*Common causes*:
+
+* Server returns malformed JSON
+* Response is not JSON (HTML error page, plain text)
+* Encoding issues
+* Truncated responses
+
+[example]
+====
+[source,ruby]
+----
+begin
+  response = client.get('/api/products')
+rescue Lutaml::Hal::ParsingError => e
+  puts "Failed to parse response: #{e.message}"
+  # Handle parsing failure (log raw response, fallback parsing, etc.)
+end
+----
+====
+
+==== LinkResolutionError
+
+*When it occurs*: HAL links cannot be resolved or followed.
+
+*Common causes*:
+
+* Broken or invalid HAL links
+* Referenced resources no longer exist
+* Circular link references
+* Malformed link templates
+
+[example]
+====
+[source,ruby]
+----
+begin
+  # Following a HAL link that doesn't exist
+  product = register.fetch(:product_resource, id: '123')
+  related_items = product.links.related.realize
+rescue Lutaml::Hal::LinkResolutionError => e
+  puts "Failed to resolve link: #{e.message}"
+  # Handle broken links (skip, use fallback, etc.)
+end
+----
+====
+
+== Error handling strategies
+
+=== Catch all Lutaml::Hal errors
+
+[example]
+====
+[source,ruby]
+----
+begin
+  response = client.get('/api/products')
+rescue Lutaml::Hal::Error => e
+  puts "Lutaml::Hal error occurred: #{e.class.name} - #{e.message}"
+  # Handle any lutaml-hal specific error
+rescue StandardError => e
+  puts "Unexpected error: #{e.class.name} - #{e.message}"
+  # Handle other errors
+end
+----
+====
+
+=== Specific error handling
+
+[example]
+====
+[source,ruby]
+----
+begin
+  response = client.get('/api/products')
+rescue Lutaml::Hal::ConnectionError => e
+  # Network issues - maybe retry with backoff
+  retry_with_backoff
+rescue Lutaml::Hal::UnauthorizedError => e
+  # Auth issues - refresh token and retry
+  refresh_authentication
+  retry
+rescue Lutaml::Hal::NotFoundError => e
+  # Resource missing - return nil or default
+  return nil
+rescue Lutaml::Hal::TooManyRequestsError => e
+  # Rate limited - respect retry-after
+  handle_rate_limit(e)
+rescue Lutaml::Hal::ServerError => e
+  # Server issues - retry with exponential backoff
+  retry_with_exponential_backoff
+rescue Lutaml::Hal::Error => e
+  # Other lutaml-hal errors
+  log_error(e)
+  raise
+end
+----
+====
+
+=== Retry logic with exponential backoff
+
+[example]
+====
+[source,ruby]
+----
+def fetch_with_retry(client, path, max_retries: 3)
+  retries = 0
+
+  begin
+    client.get(path)
+  rescue Lutaml::Hal::ConnectionError,
+         Lutaml::Hal::TimeoutError,
+         Lutaml::Hal::ServerError => e
+
+    retries += 1
+    if retries <= max_retries
+      delay = 2 ** retries  # Exponential backoff: 2, 4, 8 seconds
+      puts "Retry #{retries}/#{max_retries} after #{delay}s: #{e.message}"
+      sleep(delay)
+      retry
+    else
+      puts "Max retries exceeded, giving up"
+      raise
+    end
+  end
+end
+----
+====
+
+=== Graceful degradation
+
+[example]
+====
+[source,ruby]
+----
+def fetch_product_with_fallback(id)
+  begin
+    # Try to fetch from primary API
+    register.fetch(:product_resource, id: id)
+  rescue Lutaml::Hal::NotFoundError
+    # Product doesn't exist
+    nil
+  rescue Lutaml::Hal::ConnectionError, Lutaml::Hal::ServerError
+    # API unavailable, try cache or fallback
+    fetch_from_cache(id) || create_placeholder_product(id)
+  rescue Lutaml::Hal::UnauthorizedError
+    # Auth issues, return limited data
+    create_limited_product(id)
+  end
+end
+----
+====
+
+== Best practices
+
+=== Use specific error types
+
+Catch specific error types rather than the generic `Lutaml::Hal::Error`:
+
+[example]
+====
+[source,ruby]
+----
+# Good: Specific handling
+begin
+  response = client.get('/api/products')
+rescue Lutaml::Hal::NotFoundError
+  return []  # Return empty array for missing resources
+rescue Lutaml::Hal::UnauthorizedError
+  redirect_to_login
+end
+
+# Avoid: Generic handling
+begin
+  response = client.get('/api/products')
+rescue Lutaml::Hal::Error => e
+  # Too generic - different errors need different handling
+  handle_error(e)
+end
+----
+====
+
+=== Implement appropriate retry logic
+
+Different errors warrant different retry strategies:
+
+[example]
+====
+[source,ruby]
+----
+# Retry for transient errors
+RETRYABLE_ERRORS = [
+  Lutaml::Hal::ConnectionError,
+  Lutaml::Hal::TimeoutError,
+  Lutaml::Hal::ServerError,
+  Lutaml::Hal::TooManyRequestsError
+].freeze
+
+# Don't retry for client errors
+NON_RETRYABLE_ERRORS = [
+  Lutaml::Hal::BadRequestError,
+  Lutaml::Hal::UnauthorizedError,
+  Lutaml::Hal::NotFoundError
+].freeze
+----
+====
+
+=== Log errors appropriately
+
+Include relevant context in error logs:
+
+[example]
+====
+[source,ruby]
+----
+begin
+  response = client.get(path, params)
+rescue Lutaml::Hal::Error => e
+  logger.error "API request failed", {
+    error_class: e.class.name,
+    error_message: e.message,
+    path: path,
+    params: params,
+    backtrace: e.backtrace.first(5)
+  }
+  raise
+end
+----
+====
+
+=== Provide user-friendly messages
+
+Convert technical errors into user-friendly messages:
+
+[example]
+====
+[source,ruby]
+----
+def user_friendly_error_message(error)
+  case error
+  when Lutaml::Hal::ConnectionError
+    "Unable to connect to the service. Please check your internet connection."
+  when Lutaml::Hal::UnauthorizedError
+    "Your session has expired. Please log in again."
+  when Lutaml::Hal::NotFoundError
+    "The requested item could not be found."
+  when Lutaml::Hal::TooManyRequestsError
+    "Too many requests. Please wait a moment and try again."
+  when Lutaml::Hal::ServerError
+    "The service is temporarily unavailable. Please try again later."
+  else
+    "An unexpected error occurred. Please try again."
+  end
+end
+----
+====
+
+=== Monitor error patterns
+
+Track error frequencies to identify issues:
+
+[example]
+====
+[source,ruby]
+----
+class ErrorTracker
+  def self.track(error, context = {})
+    # Log to monitoring service
+    StatsD.increment("lutaml_hal.errors.#{error.class.name.demodulize.underscore}")
+
+    # Log details for investigation
+    Rails.logger.error "Lutaml::Hal Error", {
+      error: error.class.name,
+      message: error.message,
+      context: context
+    }
+  end
+end
+
+begin
+  response = client.get('/api/products')
+rescue Lutaml::Hal::Error => e
+  ErrorTracker.track(e, { path: '/api/products' })
+  raise
+end
+----
+====
+
+== Testing error handling
+
+=== Mock network errors
+
+[example]
+====
+[source,ruby]
+----
+# In your tests
+RSpec.describe "API error handling" do
+  let(:client) { Lutaml::Hal::Client.new(api_url: 'https://api.example.com') }
+
+  it "handles connection errors gracefully" do
+    allow(client).to receive(:get).and_raise(Lutaml::Hal::ConnectionError, "Connection failed")
+
+    expect { fetch_products }.not_to raise_error
+    expect(fetch_products).to eq([])  # Returns empty array as fallback
+  end
+
+  it "retries on server errors" do
+    call_count = 0
+    allow(client).to receive(:get) do
+      call_count += 1
+      if call_count < 3
+        raise Lutaml::Hal::ServerError, "Server error"
+      else
+        { products: [] }
+      end
+    end
+
+    result = fetch_products_with_retry
+    expect(result).to eq({ products: [] })
+    expect(call_count).to eq(3)
+  end
+end
+----
+====
+
+=== Test error scenarios
+
+[example]
+====
+[source,ruby]
+----
+# Test different HTTP status codes
+RSpec.describe "HTTP error handling" do
+  let(:stubs) { Faraday::Adapter::Test::Stubs.new }
+  let(:client) { create_test_client_with_stubs(stubs) }
+
+  it "raises NotFoundError for 404 responses" do
+    stubs.get('/api/products/missing') { [404, {}, { error: 'Not found' }] }
+
+    expect {
+      client.get('/api/products/missing')
+    }.to raise_error(Lutaml::Hal::NotFoundError)
+  end
+
+  it "raises UnauthorizedError for 401 responses" do
+    stubs.get('/api/products') { [401, {}, { error: 'Unauthorized' }] }
+
+    expect {
+      client.get('/api/products')
+    }.to raise_error(Lutaml::Hal::UnauthorizedError)
+  end
+end
+----
+====
+
+== Troubleshooting
+
+=== Common issues
+
+==== Error: "uninitialized constant Lutaml::Hal::SomeError"
+
+Make sure you're requiring the lutaml-hal library properly:
+
+[example]
+====
+[source,ruby]
+----
+require 'lutaml-hal'
+# or
+require 'lutaml/hal'
+----
+====
+
+==== Errors not being caught properly
+
+Ensure you're catching the right error types. Use the error hierarchy to catch
+groups of related errors:
+
+[example]
+====
+[source,ruby]
+----
+# Catch all HTTP status errors
+rescue Lutaml::Hal::BadRequestError,
+       Lutaml::Hal::UnauthorizedError,
+       Lutaml::Hal::NotFoundError,
+       Lutaml::Hal::TooManyRequestsError,
+       Lutaml::Hal::ServerError => e
+  handle_http_error(e)
+end
+----
+====
+
+==== Rate limiting not working as expected
+
+Check if you're catching `TooManyRequestsError` and implementing proper retry
+logic. The built-in rate limiter should handle most cases automatically.
+
+=== Debug information
+
+Enable debug logging to see detailed error information:
+
+[example]
+====
+[source,ruby]
+----
+ENV['DEBUG_API'] = 'true'
+
+# This will log detailed request/response information
+# including error details
+----
+====
+
+When debug logging is enabled, you'll see detailed information about errors
+including:
+
+* Full request details (URL, headers, parameters)
+* Complete response information (status, headers, body)
+* Error context and stack traces
+* Retry attempts and delays

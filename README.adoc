@@ -132,6 +132,9 @@ Implementing and using embedded resources in HAL APIs with automatic link realiz
 link:docs/rate-limiting.adoc[Rate limiting]::
 Configuring and using built-in rate limiting functionality
 
+link:docs/error-handling.adoc[Error handling]::
+Understanding and handling different types of errors when working with HAL APIs
+
 
 === Architecture overview
 
@@ -217,20 +220,6 @@ register.add_endpoint(
 For complex path pattern examples, see
 link:docs/complex-path-patterns.adoc[Complex Path Patterns].
 
-== Error handling
-
-The library provides structured error handling:
-
-[source,ruby]
-----
-begin
-  product = register.fetch(:product_resource, id: '123')
-rescue Lutaml::Hal::Errors::NotFoundError => e
-  puts "Product not found: #{e.message}"
-rescue Lutaml::Hal::Errors::ApiError => e
-  puts "API Error: #{e.message}"
-end
-----
 
 == Contributing
 
