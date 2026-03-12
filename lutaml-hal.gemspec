@@ -27,5 +27,6 @@ Gem::Specification.new do |spec|
   spec.add_dependency 'faraday', '~> 2.0'
   spec.add_dependency 'faraday-follow_redirects', '~> 0.3'
   spec.add_dependency 'lutaml-model'
+  spec.add_dependency 'lutaml-store'
   spec.add_dependency 'rainbow', '~> 3.0'
 end

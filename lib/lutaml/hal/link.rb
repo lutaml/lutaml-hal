@@ -27,17 +27,26 @@ module Lutaml
       # This method will use the global register according to the source of the Link object.
       # If the Link does not have a register, a register needs to be provided explicitly
       # via the `register:` parameter.
-      def realize(register: nil, parent_resource: nil)
+      def realize(register: nil, parent_resource: nil, force_refresh: false)
         # Use provided parent_resource or fall back to stored parent_resource
         effective_parent = parent_resource || @parent_resource
 
-        # First check if embedded content is available
-        if effective_parent && (embedded_content = check_embedded_content(effective_parent, register))
+        register = find_register(register)
+        raise "No register provided for link resolution (class: #{self.class}, href: #{href})" if register.nil?
+
+        # Priority 1: Check embedded content first (unless force_refresh)
+        if !force_refresh && effective_parent && (embedded_content = check_embedded_content(effective_parent, register))
+          # Cache embedded content too
+          if register.cache_store
+            register.send(:cache_realized_model, href, embedded_content)
+          end
           return embedded_content
         end
 
-        register = find_register(register)
-        raise "No register provided for link resolution (class: #{self.class}, href: #{href})" if register.nil?
+        # Force refresh bypasses cache
+        if force_refresh && register.cache_store
+          register.cache_store.delete(register.send(:cache_key, href))
+        end
 
         Hal.debug_log "Resolving link href: #{href} using register"
         register.resolve_and_cast(self, href)

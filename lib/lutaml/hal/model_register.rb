@@ -3,18 +3,20 @@
 require 'cgi'
 require_relative 'errors'
 require_relative 'endpoint_configuration'
+require_relative 'cache/cache_manager'
 
 module Lutaml
   module Hal
     # Register to map URL patterns to model classes with EndpointParameter support
     class ModelRegister
-      attr_accessor :models, :client, :register_name
+      attr_accessor :models, :client, :register_name, :cache_manager
 
-      def initialize(name:, client: nil)
+      def initialize(name:, client: nil, cache: nil)
         @register_name = name
         # If `client` is not set, it can be set later
         @client = client
         @models = {}
+        @cache_manager = Cache::CacheManager.new(cache) if cache
       end
 
       # Register a model with its URL pattern and parameters
@@ -75,27 +77,86 @@ module Lutaml
         # Add query parameters
         final_url = build_url_with_query_params(url, processed_params[:query])
 
+        realized_model = nil
+        response = nil
+
+        # Check cache first
+        if @cache_manager&.available?
+          cached_entry = @cache_manager.get(final_url)
+          if cached_entry
+            debug_log("Cache hit for fetch: #{final_url}")
+            realized_model = cached_entry.hal_resource
+            # Return cached model directly if valid
+            mark_model_links_with_register(realized_model)
+            return realized_model
+          end
+        end
+
+        # Make request if not cached
+        # Add conditional headers if we have cached metadata
+        request_headers = processed_params[:headers].dup
+        if @cache_manager&.available?
+          conditional_headers = @cache_manager.conditional_request_headers(final_url)
+          request_headers.merge!(conditional_headers) if conditional_headers
+        end
+
         # Make request with headers
-        response = if processed_params[:headers].any?
-                     client.get_with_headers(final_url, processed_params[:headers])
+        response = if request_headers.any?
+                     client.get_with_headers(final_url, request_headers)
                    else
                      client.get(final_url)
                    end
 
-        realized_model = endpoint[:model].from_json(response.to_json)
+        # Handle 304 Not Modified
+        if response.respond_to?(:status) && response.status == 304
+          @cache_manager&.refresh_entry(final_url, response)
+          cached_entry = @cache_manager.get(final_url)
+          realized_model = cached_entry.hal_resource if cached_entry
+        else
+          # Create model from response
+          realized_model = endpoint[:model].from_json(response.to_json)
+
+          # Cache the realized model with metadata
+          @cache_manager&.set(final_url, response, realized_model)
+        end
 
         # Store embedded data for later resolution
-        realized_model.instance_variable_set(:@_embedded, response['_embedded']) if response['_embedded']
+        realized_model.instance_variable_set(:@_embedded, response['_embedded']) if response && response['_embedded']
 
         mark_model_links_with_register(realized_model)
+
         realized_model
       end
 
       def resolve_and_cast(link, href)
         raise 'Client not configured' unless client
 
-        Hal.debug_log("resolve_and_cast: link #{link}, href #{href}")
-        response = client.get_by_url(href)
+        # Check cache first
+        if @cache_manager&.available?
+          cached_entry = @cache_manager.get(href)
+          if cached_entry
+            debug_log("Cache hit for: #{href}")
+            return cached_entry.hal_resource
+          end
+        end
+
+        debug_log("resolve_and_cast: link #{link}, href #{href}")
+
+        # Add conditional headers if we have cached metadata
+        conditional_headers = @cache_manager&.conditional_request_headers(href) || {}
+
+        response = if conditional_headers.any?
+                     client.get_by_url_with_headers(href, conditional_headers)
+                   else
+                     client.get_by_url(href)
+                   end
+
+        # Handle 304 Not Modified
+        if response.respond_to?(:status) && response.status == 304
+          @cache_manager&.refresh_entry(href, response)
+          cached_entry = @cache_manager.get(href)
+          return cached_entry.hal_resource if cached_entry
+        end
 
         # TODO: Merge full Link content into the resource?
         response_with_link_details = response.to_h.merge({ 'href' => href })
@@ -105,12 +166,16 @@ module Lutaml
         model_class = find_matching_model_class(href_path)
         raise LinkResolutionError, "Unregistered URL pattern: #{href}" unless model_class
 
-        Hal.debug_log("resolve_and_cast: resolved to model_class #{model_class}")
-        Hal.debug_log("resolve_and_cast: response: #{response.inspect}")
-        Hal.debug_log("resolve_and_cast: amended: #{response_with_link_details}")
+        debug_log("resolve_and_cast: resolved to model_class #{model_class}")
+        debug_log("resolve_and_cast: response: #{response.inspect}")
+        debug_log("resolve_and_cast: amended: #{response_with_link_details}")
 
         model = model_class.from_json(response_with_link_details.to_json)
         mark_model_links_with_register(model)
+
+        # Cache the realized model with metadata
+        @cache_manager&.set(href, response, model)
+
         model
       end
 
@@ -145,7 +210,24 @@ module Lutaml
         inspecting_model
       end
 
+      # Cache management methods
+      def cache_stats
+        @cache_manager&.stats || {}
+      end
+
+      def clear_cache
+        @cache_manager&.clear
+      end
+
+      def cache_info
+        @cache_manager&.info
+      end
+
       private
+
+      def debug_log(message)
+        puts "[Lutaml::Hal] DEBUG: #{message}" if ENV['DEBUG_API']
+      end
 
       def process_parameters(parameter_definitions, provided_params)
         result = { path: {}, query: {}, headers: {}, cookies: {} }
@@ -339,15 +421,16 @@ module Lutaml
         # This ensures that {param} only matches a single path segment
         regex = Regexp.new("^#{pattern_with_wildcards.gsub('*', '[^/]+')}$")
 
-        Hal.debug_log("pattern_match?: regex: #{regex.inspect}")
-        Hal.debug_log("pattern_match?: href to match #{url}")
-        Hal.debug_log("pattern_match?: pattern to match #{pattern_with_wildcards}")
+        debug_log("pattern_match?: regex: #{regex.inspect}")
+        debug_log("pattern_match?: href to match #{url}")
+        debug_log("pattern_match?: pattern to match #{pattern_with_wildcards}")
 
         matches = regex.match?(url)
-        Hal.debug_log("pattern_match?: matches = #{matches}")
+        debug_log("pattern_match?: matches = #{matches}")
 
         matches
       end
+
     end
   end
 end

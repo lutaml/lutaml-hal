@@ -4,10 +4,10 @@ module Lutaml
   module Hal
     # Rate limiter to handle API rate limiting with exponential backoff
     class RateLimiter
-      DEFAULT_MAX_RETRIES = 3
-      DEFAULT_BASE_DELAY = 1.0
-      DEFAULT_MAX_DELAY = 60.0
-      DEFAULT_BACKOFF_FACTOR = 2.0
+      DEFAULT_MAX_RETRIES = 5
+      DEFAULT_BASE_DELAY = 0.05
+      DEFAULT_MAX_DELAY = 5.0
+      DEFAULT_BACKOFF_FACTOR = 1.5
 
       attr_reader :max_retries, :base_delay, :max_delay, :backoff_factor
 
