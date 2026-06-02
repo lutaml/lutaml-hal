@@ -36,17 +36,13 @@ module Lutaml
 
         # Priority 1: Check embedded content first (unless force_refresh)
         if !force_refresh && effective_parent && (embedded_content = check_embedded_content(effective_parent, register))
-          # Cache embedded content too
-          if register.cache_store
-            register.send(:cache_realized_model, href, embedded_content)
-          end
+          # Cache embedded content too, so later lookups by href are served locally
+          register.cache_manager&.set(href, nil, embedded_content)
           return embedded_content
         end
 
-        # Force refresh bypasses cache
-        if force_refresh && register.cache_store
-          register.cache_store.delete(register.send(:cache_key, href))
-        end
+        # Force refresh bypasses any cached entry for this href
+        register.cache_manager&.invalidate(href) if force_refresh
 
         Hal.debug_log "Resolving link href: #{href} using register"
         register.resolve_and_cast(self, href)

@@ -421,7 +421,9 @@ RSpec.describe Lutaml::Hal::Cache::CacheManager do
 
       context 'with valid CacheEntry' do
         let(:cache_entry) do
-          instance_double(Lutaml::Hal::Cache::CacheEntry, valid?: true)
+          Lutaml::Hal::Cache::CacheEntry.new(url: 'http://example.com', hal_resource: hal_resource).tap do |entry|
+            allow(entry).to receive(:valid?).and_return(true)
+          end
         end
 
         it 'returns cache entry if valid' do

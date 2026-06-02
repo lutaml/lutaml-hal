@@ -5,10 +5,11 @@ require_relative 'cache_entry'
 require_relative 'cache_metadata'
 require_relative 'simple_cache_store'
 
-# Try to require HTTP cache components from lutaml-store
+# Try to require lutaml-store. Requiring the entry point (rather than the
+# individual files) sets up the autoloads it relies on internally, e.g.
+# Lutaml::Store::HttpCacheConfig referenced from HttpCache#initialize.
 begin
-  require 'lutaml/store/http_cache'
-  require 'lutaml/store/cache_store'
+  require 'lutaml/store'
   CACHE_STORE_AVAILABLE = true
 rescue LoadError
   CACHE_STORE_AVAILABLE = false
@@ -132,19 +133,19 @@ module Lutaml
         private
 
         def create_cache_store
-          if CACHE_STORE_AVAILABLE
-            if configuration.http_aware?
-              create_http_cache
-            else
-              create_basic_cache
-            end
-          else
-            # Fallback to simple in-memory cache when lutaml-store is not available
-            create_simple_cache
-          end
+          # The cache stores realized HAL models directly, which requires an
+          # object-preserving in-memory store: lutaml-store's CacheStore
+          # serializes entries to JSON and cannot round-trip a live model.
+          # Conditional requests (ETag / Last-Modified) are still driven from
+          # each entry's stored metadata, independent of the backend.
+          #
+          # NOTE: Backing the HTTP-aware mode with lutaml-store's HttpCache
+          # response cache is deferred until realized models can be
+          # reconstructed from a cached response (requires the resource class);
+          # the create_http_cache / *_http_cache helpers remain as scaffolding.
+          create_simple_cache
         rescue => e
           Lutaml::Hal.debug_log("Failed to create cache store: #{e.message}")
-          # Fallback to simple cache on any error
           create_simple_cache
         end
 

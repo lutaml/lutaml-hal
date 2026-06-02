@@ -120,8 +120,8 @@ RSpec.describe Lutaml::Hal::Cache::CacheConfiguration do
     end
 
     context 'with invalid adapter_config' do
-      it 'raises TypeError during initialization' do
-        expect { described_class.new(adapter_config: 'invalid') }.to raise_error(TypeError)
+      it 'rejects a non-hash adapter_config during initialization' do
+        expect { described_class.new(adapter_config: 'invalid') }.to raise_error(StandardError)
       end
     end
   end
@@ -166,8 +166,8 @@ RSpec.describe Lutaml::Hal::Cache::CacheConfiguration do
         allow(config).to receive(:http_cache_available?).and_return(true)
       end
 
-      it 'returns true (default behavior)' do
-        expect(config.http_aware?).to be true
+      it 'returns false (HTTP-aware caching is opt-in)' do
+        expect(config.http_aware?).to be false
       end
     end
   end

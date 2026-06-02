@@ -402,7 +402,8 @@ RSpec.describe 'Cache Integration' do
       cache_store = cache_manager.send(:cache_store)
 
       if cache_store
-        cache_store.set('hal_resource:https://api.example.com/resources/123', legacy_cache_data)
+        # fetch builds its cache key from the (relative) endpoint URL
+        cache_store.set('hal_resource:/resources/123', legacy_cache_data)
 
         # Should convert legacy data and return the resource
         result = register.fetch(:test_resource, id: '123')

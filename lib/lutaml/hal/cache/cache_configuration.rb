@@ -44,8 +44,13 @@ module Lutaml
         end
 
         # Check if HTTP-aware caching should be used
+        #
+        # HTTP-aware caching (conditional requests backed by a response cache)
+        # is opt-in: it only applies when explicitly enabled and the
+        # lutaml-store HTTP cache backend is available. By default the register
+        # uses the basic object cache, which stores realized models directly.
         def http_aware?
-          http_aware != false && http_cache_available?
+          http_aware == true && http_cache_available?
         end
 
         # Check if basic caching should be used
