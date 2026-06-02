@@ -226,6 +226,22 @@ RSpec.describe 'Cache Integration' do
     end
   end
 
+  describe 'cross-path cache sharing' do
+    # A resource fetched by its (relative) endpoint path and the same resource
+    # realized from its absolute link href must resolve to the same cache entry,
+    # so a document linked from many places is only fetched once.
+    it 'serves a realized link from the entry populated by fetch' do
+      expect(mock_client).to receive(:get).with('/resources/123').and_return(mock_response).once
+      register.fetch(:test_resource, id: '123')
+
+      expect(mock_client).not_to receive(:get_by_url)
+      result = register.resolve_and_cast(double('link'), 'https://api.example.com/resources/123')
+
+      expect(result).to be_a(mock_resource_class)
+      expect(result.id).to eq('123')
+    end
+  end
+
   describe 'cache management' do
     let(:url) { '/resources/123' }
 
@@ -395,8 +411,8 @@ RSpec.describe 'Cache Integration' do
       cache_store = cache_manager.send(:cache_store)
 
       if cache_store
-        # fetch builds its cache key from the (relative) endpoint URL
-        cache_store.set('hal_resource:/resources/123', legacy_cache_data)
+        # fetch keys the cache by the canonical absolute URL
+        cache_store.set('hal_resource:https://api.example.com/resources/123', legacy_cache_data)
 
         # Should convert legacy data and return the resource
         result = register.fetch(:test_resource, id: '123')

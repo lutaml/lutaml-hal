@@ -22,7 +22,12 @@ module Lutaml
       class CacheManager
         attr_reader :configuration, :cache_store
 
-        def initialize(config = nil)
+        # @param config cache configuration (see CacheConfiguration.from_config)
+        # @param client [Lutaml::Hal::Client, nil] used to canonicalize relative
+        #   URLs so that a resource fetched by endpoint path and the same
+        #   resource realized from an absolute link href share a cache entry.
+        def initialize(config = nil, client: nil)
+          @client = client
           @configuration = CacheConfiguration.from_config(config)
           begin
             @configuration.validate!
@@ -166,7 +171,18 @@ module Lutaml
         end
 
         def cache_key(url)
-          "hal_resource:#{url}"
+          "hal_resource:#{canonical_url(url)}"
+        end
+
+        # Normalize a URL to an absolute form so that the same resource is
+        # cached under one key regardless of whether it was reached by a
+        # relative endpoint path (fetch) or an absolute link href (realize).
+        def canonical_url(url)
+          url = url.to_s
+          return url if url.start_with?('http')
+          return url unless @client&.api_url
+
+          "#{@client.api_url}#{url}"
         end
 
         def get_from_http_cache(url, key)

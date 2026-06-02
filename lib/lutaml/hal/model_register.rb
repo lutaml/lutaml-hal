@@ -16,7 +16,7 @@ module Lutaml
         # If `client` is not set, it can be set later
         @client = client
         @models = {}
-        @cache_manager = Cache::CacheManager.new(cache) if cache
+        @cache_manager = Cache::CacheManager.new(cache, client: @client) if cache
       end
 
       # Register a model with its URL pattern and parameters
