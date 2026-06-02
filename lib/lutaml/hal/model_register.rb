@@ -78,7 +78,6 @@ module Lutaml
         final_url = build_url_with_query_params(url, processed_params[:query])
 
         realized_model = nil
-        response = nil
 
         # Check cache first
         if @cache_manager&.available?
@@ -436,7 +435,6 @@ module Lutaml
 
         matches
       end
-
     end
   end
 end

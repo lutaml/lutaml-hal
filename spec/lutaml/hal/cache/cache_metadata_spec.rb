@@ -35,9 +35,9 @@ RSpec.describe Lutaml::Hal::Cache::CacheMetadata do
     context 'with response object with headers method' do
       let(:response) do
         double('response', headers: {
-          'etag' => '"def456"',
-          'cache-control' => 'no-cache'
-        })
+                 'etag' => '"def456"',
+                 'cache-control' => 'no-cache'
+               })
       end
 
       it 'extracts metadata from response headers' do

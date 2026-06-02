@@ -140,7 +140,7 @@ RSpec.describe 'Cache Integration' do
         register.fetch(:test_resource, id: '123')
 
         # Mock client to support conditional requests
-        allow(mock_client).to receive(:get_with_headers) do |url, headers|
+        allow(mock_client).to receive(:get_with_headers) do |_url, headers|
           expect(headers['If-None-Match']).to eq('"abc123"')
           conditional_response
         end
@@ -225,7 +225,7 @@ RSpec.describe 'Cache Integration' do
         register.resolve_and_cast(link, href)
 
         # Mock client to support conditional requests
-        allow(mock_client).to receive(:get_by_url_with_headers) do |url, headers|
+        allow(mock_client).to receive(:get_by_url_with_headers) do |_url, headers|
           expect(headers['If-None-Match']).to eq('"abc123"')
           conditional_response
         end

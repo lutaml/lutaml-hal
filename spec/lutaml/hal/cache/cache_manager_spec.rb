@@ -39,7 +39,9 @@ RSpec.describe Lutaml::Hal::Cache::CacheManager do
 
     context 'with invalid configuration' do
       it 'raises validation error' do
-        expect { described_class.new({ adapter_type: 'invalid' }) }.to raise_error(ArgumentError, /Invalid cache configuration/)
+        expect do
+          described_class.new({ adapter_type: 'invalid' })
+        end.to raise_error(ArgumentError, /Invalid cache configuration/)
       end
     end
   end

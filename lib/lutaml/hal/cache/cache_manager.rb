@@ -154,7 +154,7 @@ module Lutaml
           else
             create_simple_cache
           end
-        rescue => e
+        rescue StandardError => e
           Lutaml::Hal.debug_log("Failed to create cache store: #{e.message}")
           create_simple_cache
         end
@@ -221,8 +221,6 @@ module Lutaml
               # Legacy in-memory hash format support
               convert_legacy_cache_data(cached_data)
             end
-          else
-            nil
           end
         end
 
@@ -266,7 +264,7 @@ module Lutaml
           )
         end
 
-        def convert_entry_to_http_response(entry, original_response)
+        def convert_entry_to_http_response(entry, _original_response)
           {
             status_code: entry.metadata&.status_code || 200,
             headers: extract_headers_from_metadata(entry.metadata),

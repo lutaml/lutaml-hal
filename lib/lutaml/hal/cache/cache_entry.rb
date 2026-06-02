@@ -92,6 +92,7 @@ module Lutaml
         # Check if the entry can be revalidated with conditional requests
         def revalidatable?
           return false unless metadata
+
           !!(metadata.etag || metadata.last_modified)
         end
 
@@ -122,7 +123,7 @@ module Lutaml
         # Check if entry should be served stale (useful for error scenarios)
         def serve_stale?(max_stale = nil)
           return false unless max_stale
-          return false if valid?(Float::INFINITY)  # Still fresh
+          return false if valid?(Float::INFINITY) # Still fresh
 
           cached_time = cached_at.is_a?(String) ? Time.parse(cached_at) : cached_at
           current_age = Time.now - cached_time

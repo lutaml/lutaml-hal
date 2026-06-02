@@ -16,17 +16,17 @@ RSpec.describe Lutaml::Hal::Cache::CacheEntry do
   end
 
   describe '.create' do
-      it 'creates a cache entry with current timestamp' do
-        freeze_time = Time.parse('2015-10-21 07:28:00 UTC')
-        allow(Time).to receive(:now).and_return(freeze_time)
+    it 'creates a cache entry with current timestamp' do
+      freeze_time = Time.parse('2015-10-21 07:28:00 UTC')
+      allow(Time).to receive(:now).and_return(freeze_time)
 
-        entry = described_class.create(url, response, hal_resource)
+      entry = described_class.create(url, response, hal_resource)
 
-        expect(entry.url).to eq(url)
-        expect(entry.cached_at).to eq(freeze_time.to_s)
-        expect(entry.metadata).to be_a(Lutaml::Hal::Cache::CacheMetadata)
-        expect(entry.hal_resource).to eq(hal_resource)
-      end
+      expect(entry.url).to eq(url)
+      expect(entry.cached_at).to eq(freeze_time.to_s)
+      expect(entry.metadata).to be_a(Lutaml::Hal::Cache::CacheMetadata)
+      expect(entry.hal_resource).to eq(hal_resource)
+    end
   end
 
   describe '#valid?' do
@@ -285,7 +285,7 @@ RSpec.describe Lutaml::Hal::Cache::CacheEntry do
 
     context 'when entry is beyond max_stale' do
       it 'returns false' do
-        current_time = cached_at + 10800 # Beyond both max-age and max_stale
+        current_time = cached_at + 10_800 # Beyond both max-age and max_stale
         allow(Time).to receive(:now).and_return(current_time)
 
         expect(entry.serve_stale?(7200)).to be false

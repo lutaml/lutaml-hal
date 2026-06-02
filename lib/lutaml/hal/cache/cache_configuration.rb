@@ -125,8 +125,6 @@ module Lutaml
             type&.to_s
           when Symbol, String
             adapter_info.to_s
-          else
-            nil
           end
         end
 
@@ -160,9 +158,8 @@ module Lutaml
 
         # Override the setter to validate before assignment
         def adapter_config=(value)
-          if value && !value.is_a?(Hash)
-            raise ArgumentError, "Adapter config must be a hash, got: #{value.class}"
-          end
+          raise ArgumentError, "Adapter config must be a hash, got: #{value.class}" if value && !value.is_a?(Hash)
+
           super(value)
         end
 

@@ -62,8 +62,6 @@ module Lutaml
           !etag.nil? && !etag.empty? || !last_modified.nil? && !last_modified.empty?
         end
 
-        private
-
         def self.extract_headers(response)
           case response
           when Hash

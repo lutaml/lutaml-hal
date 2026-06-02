@@ -97,13 +97,11 @@ class MockClient
     get(url)
   end
 
-  def request_count
-    @request_count
-  end
+  attr_reader :request_count
 end
 
 def demo_cache_integration
-  puts "=== Lutaml::Hal Cache Integration Demo ==="
+  puts '=== Lutaml::Hal Cache Integration Demo ==='
   puts
 
   # Create mock client
@@ -214,16 +212,16 @@ def demo_cache_integration
   end
 
   # Global cache management
-  puts "--- Global Cache Management ---"
+  puts '--- Global Cache Management ---'
   global_stats = Lutaml::Hal::GlobalRegister.instance.cache_stats
-  puts "All register cache stats:"
+  puts 'All register cache stats:'
   global_stats.each do |name, stats|
     puts "  #{name}: #{stats}"
   end
 
   puts "\nClearing all caches..."
   Lutaml::Hal::GlobalRegister.instance.clear_all_caches
-  puts "All caches cleared."
+  puts 'All caches cleared.'
 end
 
 def demo_cache_configuration_options
@@ -232,7 +230,7 @@ def demo_cache_configuration_options
   # Different cache configurations
   configs = [
     {
-      name: "Memory with TTL",
+      name: 'Memory with TTL',
       config: {
         adapter: { type: :memory },
         ttl: 60,
@@ -240,7 +238,7 @@ def demo_cache_configuration_options
       }
     },
     {
-      name: "Filesystem with compression",
+      name: 'Filesystem with compression',
       config: {
         adapter: {
           type: :filesystem,
@@ -252,7 +250,7 @@ def demo_cache_configuration_options
       }
     },
     {
-      name: "SQLite with encryption",
+      name: 'SQLite with encryption',
       config: {
         adapter: {
           type: :sqlite,
@@ -275,12 +273,11 @@ def demo_cache_configuration_options
       )
 
       cache_info = register.cache_info
-      puts "✓ Configuration successful"
+      puts '✓ Configuration successful'
       puts "  Adapter: #{cache_info[:adapter_type]}"
       puts "  TTL: #{cache_info[:default_ttl]}s"
       puts "  Max size: #{cache_info[:max_size]}"
-
-    rescue => e
+    rescue StandardError => e
       puts "✗ Configuration failed: #{e.message}"
     end
   end
@@ -357,11 +354,11 @@ if __FILE__ == $0
   demo_cache_performance
 
   puts "\n=== Demo Complete ==="
-  puts "This demo showed:"
-  puts "• Cache integration with different adapters (memory, filesystem, SQLite)"
-  puts "• Cache configuration options (TTL, compression, encryption)"
-  puts "• Performance benefits of caching"
-  puts "• Global cache management"
-  puts "• Force refresh capabilities"
-  puts "• Cache statistics and monitoring"
+  puts 'This demo showed:'
+  puts '• Cache integration with different adapters (memory, filesystem, SQLite)'
+  puts '• Cache configuration options (TTL, compression, encryption)'
+  puts '• Performance benefits of caching'
+  puts '• Global cache management'
+  puts '• Force refresh capabilities'
+  puts '• Cache statistics and monitoring'
 end

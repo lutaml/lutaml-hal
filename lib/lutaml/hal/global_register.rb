@@ -54,9 +54,7 @@ module Lutaml
       def cache_stats
         stats = {}
         @model_registers.each do |name, register|
-          if register.respond_to?(:cache_info)
-            stats[name] = register.cache_info
-          end
+          stats[name] = register.cache_info if register.respond_to?(:cache_info)
         end
         stats
       end
