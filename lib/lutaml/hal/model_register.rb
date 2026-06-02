@@ -121,7 +121,7 @@ module Lutaml
         end
 
         # Store embedded data for later resolution
-        realized_model.instance_variable_set(:@_embedded, response['_embedded']) if response && response['_embedded']
+        realized_model.embedded_data = response['_embedded'] if realized_model && response && response['_embedded']
 
         mark_model_links_with_register(realized_model)
 
@@ -185,7 +185,7 @@ module Lutaml
       def mark_model_links_with_register(inspecting_model)
         return unless inspecting_model.is_a?(Lutaml::Model::Serializable)
 
-        inspecting_model.instance_variable_set("@#{Hal::REGISTER_ID_ATTR_NAME}", @register_name)
+        inspecting_model._global_register_id = @register_name
 
         # Recursively process model attributes to mark links with this register
         inspecting_model.class.attributes.each_pair do |key, config|
@@ -221,6 +221,22 @@ module Lutaml
 
       def cache_info
         @cache_manager&.info
+      end
+
+      # Find the registered model class whose URL pattern matches the given href.
+      # Public so that Link#realize can resolve embedded resources.
+      def find_matching_model_class(href)
+        # Find all matching patterns and select the most specific one (longest pattern)
+        matching_models = @models.values.select do |model_data|
+          matches_url_with_params?(model_data, href)
+        end
+
+        return nil if matching_models.empty?
+
+        # Sort by pattern length (descending) to get the most specific match first
+        result = matching_models.max_by { |model_data| model_data[:url].length }
+
+        result[:model]
       end
 
       private
@@ -333,20 +349,6 @@ module Lutaml
         params.reduce(url_template) do |url, (key, value)|
           url.gsub("{#{key}}", value.to_s)
         end
-      end
-
-      def find_matching_model_class(href)
-        # Find all matching patterns and select the most specific one (longest pattern)
-        matching_models = @models.values.select do |model_data|
-          matches_url_with_params?(model_data, href)
-        end
-
-        return nil if matching_models.empty?
-
-        # Sort by pattern length (descending) to get the most specific match first
-        result = matching_models.max_by { |model_data| model_data[:url].length }
-
-        result[:model]
       end
 
       def matches_url_with_params?(model_data, href)

@@ -11,12 +11,11 @@ module Lutaml
     class Resource < Lutaml::Model::Serializable
       # This is the model register that has fetched this resource, and
       # will be used to resolve links unless overriden in resource#realize()
-      attr_accessor Hal::REGISTER_ID_ATTR_NAME.to_sym
+      attr_accessor :_global_register_id
 
-      # Access embedded data if available
-      def embedded_data
-        @_embedded
-      end
+      # Embedded resources from the HAL `_embedded` section, retained so that
+      # links can be realized from already-fetched content.
+      attr_accessor :embedded_data
 
       # Check if embedded data exists for a given key
       def has_embedded?(key)
@@ -31,7 +30,7 @@ module Lutaml
       # Create a resource instance from embedded JSON data
       def self.from_embedded(json_data, register_name = nil)
         instance = from_json(json_data.to_json)
-        instance.instance_variable_set("@#{Hal::REGISTER_ID_ATTR_NAME}", register_name) if register_name
+        instance._global_register_id = register_name if register_name
         instance
       end
 

@@ -3,13 +3,6 @@
 require 'rspec'
 require 'json'
 
-# Define the constant that's needed by the resource classes
-module Lutaml
-  module Hal
-    REGISTER_ID_ATTR_NAME = '_global_register_id'
-  end
-end
-
 require_relative '../../../lib/lutaml/hal/model_register'
 require_relative '../../../lib/lutaml/hal/resource'
 require_relative '../../../lib/lutaml/hal/cache/cache_manager'

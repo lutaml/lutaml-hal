@@ -9,7 +9,7 @@ module Lutaml
     class Link < Lutaml::Model::Serializable
       # This is the model register that has fetched the origin of this link, and
       # will be used to resolve unless overriden in resource#realize()
-      attr_accessor Hal::REGISTER_ID_ATTR_NAME.to_sym
+      attr_accessor :_global_register_id
 
       # Store reference to parent resource for automatic embedded content detection
       attr_accessor :parent_resource
@@ -91,19 +91,19 @@ module Lutaml
 
         # Try to find the model class for this href
         href_path = href.sub(register.client.api_url, '') if register.client
-        model_class = register.send(:find_matching_model_class, href_path)
+        model_class = register.find_matching_model_class(href_path)
         return nil unless model_class
 
         # Create the resource from embedded data
-        resource = model_class.from_embedded(embedded_item, instance_variable_get("@#{Hal::REGISTER_ID_ATTR_NAME}"))
-        register.send(:mark_model_links_with_register, resource)
+        resource = model_class.from_embedded(embedded_item, _global_register_id)
+        register.mark_model_links_with_register(resource)
         resource
       end
 
       def find_register(explicit_register)
         return explicit_register if explicit_register
 
-        register_id = instance_variable_get("@#{Hal::REGISTER_ID_ATTR_NAME}")
+        register_id = _global_register_id
         return nil if register_id.nil?
 
         register = Lutaml::Hal::GlobalRegister.instance.get(register_id)
