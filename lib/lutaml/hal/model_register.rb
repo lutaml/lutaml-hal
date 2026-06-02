@@ -136,7 +136,11 @@ module Lutaml
           cached_entry = @cache_manager.get(href)
           if cached_entry
             debug_log("Cache hit for: #{href}")
-            return cached_entry.hal_resource
+            cached_model = cached_entry.hal_resource
+            # A model rebuilt from a persistent cache needs to be (re)marked so
+            # its links can be realized against this register.
+            mark_model_links_with_register(cached_model)
+            return cached_model
           end
         end
 

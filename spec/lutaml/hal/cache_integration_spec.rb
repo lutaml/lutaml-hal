@@ -3,12 +3,25 @@
 require 'rspec'
 require 'json'
 
+require 'tmpdir'
+
 require_relative '../../../lib/lutaml/hal/model_register'
 require_relative '../../../lib/lutaml/hal/resource'
 require_relative '../../../lib/lutaml/hal/cache/cache_manager'
 require_relative '../../../lib/lutaml/hal/cache/cache_configuration'
 require_relative '../../../lib/lutaml/hal/cache/cache_entry'
 require_relative '../../../lib/lutaml/hal/cache/cache_metadata'
+
+# A *named* resource class, required because persisted cache entries record the
+# model's class name in order to rebuild it on retrieval.
+class CachePersistenceResource < Lutaml::Hal::Resource
+  attribute :id, :string
+  attribute :name, :string
+  key_value do
+    map 'id', to: :id
+    map 'name', to: :name
+  end
+end
 
 RSpec.describe 'Cache Integration' do
   let(:mock_client) { double('client', api_url: 'https://api.example.com') }
@@ -418,6 +431,52 @@ RSpec.describe 'Cache Integration' do
         result = register.fetch(:test_resource, id: '123')
         expect(result.name).to eq('Legacy Resource')
       end
+    end
+  end
+
+  describe 'filesystem persistence' do
+    let(:cache_dir) { Dir.mktmpdir('hal-cache-spec') }
+    let(:cache_config) do
+      { adapter: { type: :filesystem, options: { path: cache_dir, integrity_checks: false } }, ttl: 3600 }
+    end
+
+    let(:persist_response) do
+      double('response',
+             to_json: { 'id' => '123', 'name' => 'Persisted' }.to_json,
+             to_h: { 'id' => '123', 'name' => 'Persisted' },
+             headers: {}).tap do |response|
+        allow(response).to receive(:[]).and_return(nil)
+      end
+    end
+
+    def build_register
+      Lutaml::Hal::ModelRegister.new(name: 'persist', client: mock_client, cache: cache_config).tap do |reg|
+        reg.add_endpoint(
+          id: :persist_resource,
+          type: :show,
+          url: '/resources/{id}',
+          model: CachePersistenceResource,
+          parameters: [Lutaml::Hal::EndpointParameter.new(name: 'id', in: :path, required: true)]
+        )
+      end
+    end
+
+    after { FileUtils.remove_entry(cache_dir) if File.directory?(cache_dir) }
+
+    it 'persists a realized model to disk and rebuilds it in a fresh register' do
+      # First register fetches and writes the entry to disk
+      expect(mock_client).to receive(:get).with('/resources/123').and_return(persist_response).once
+      first = build_register.fetch(:persist_resource, id: '123')
+      expect(first.name).to eq('Persisted')
+
+      # A brand-new register (and cache manager) over the same directory must
+      # serve the rebuilt model without any HTTP request
+      expect(mock_client).not_to receive(:get)
+      second = build_register.fetch(:persist_resource, id: '123')
+
+      expect(second).to be_a(CachePersistenceResource)
+      expect(second.id).to eq('123')
+      expect(second.name).to eq('Persisted')
     end
   end
 end

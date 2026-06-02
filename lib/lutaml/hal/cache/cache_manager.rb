@@ -138,20 +138,30 @@ module Lutaml
         private
 
         def create_cache_store
-          # The cache stores realized HAL models directly, which requires an
-          # object-preserving in-memory store: lutaml-store's CacheStore
-          # serializes entries to JSON and cannot round-trip a live model.
-          # Conditional requests (ETag / Last-Modified) are still driven from
-          # each entry's stored metadata, independent of the backend.
+          # A persistent adapter (filesystem / sqlite) uses lutaml-store's
+          # CacheStore, which serializes each entry to JSON; CacheEntry knows how
+          # to round-trip itself (and rebuild its HAL model) for that path.
+          #
+          # The default in-memory adapter uses SimpleCacheStore, which keeps live
+          # CacheEntry objects so cache hits avoid any serialization cost.
           #
           # NOTE: Backing the HTTP-aware mode with lutaml-store's HttpCache
           # response cache is deferred until realized models can be
           # reconstructed from a cached response (requires the resource class);
           # the create_http_cache / *_http_cache helpers remain as scaffolding.
-          create_simple_cache
+          if CACHE_STORE_AVAILABLE && persistent_adapter?
+            create_basic_cache
+          else
+            create_simple_cache
+          end
         rescue => e
           Lutaml::Hal.debug_log("Failed to create cache store: #{e.message}")
           create_simple_cache
+        end
+
+        # Whether the configured adapter persists beyond the process.
+        def persistent_adapter?
+          %w[filesystem sqlite].include?(configuration.effective_adapter_type)
         end
 
         def create_http_cache
@@ -198,13 +208,19 @@ module Lutaml
           cached_data = cache_store.get(key)
           return nil unless cached_data
 
-          # Basic cache stores CacheEntry directly
+          # In-memory stores keep a live CacheEntry; persistent stores return a
+          # plain hash that we rebuild (with its HAL model) here.
           case cached_data
           when CacheEntry
             cached_data.valid?(configuration.effective_ttl) ? cached_data : nil
           when Hash
-            # Legacy format support
-            convert_legacy_cache_data(cached_data)
+            if CacheEntry.storage_format?(cached_data)
+              entry = CacheEntry.from_storage_h(cached_data)
+              entry&.valid?(configuration.effective_ttl) ? entry : nil
+            else
+              # Legacy in-memory hash format support
+              convert_legacy_cache_data(cached_data)
+            end
           else
             nil
           end
