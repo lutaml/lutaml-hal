@@ -60,7 +60,7 @@ module Lutaml
         return nil unless prev_page_url
 
         # Use the HAL register to fetch the previous page
-        register_name = instance_variable_get("@#{Lutaml::Hal::REGISTER_ID_ATTR_NAME}")
+        register_name = _global_register_id
         return nil unless register_name
 
         hal_register = Lutaml::Hal::GlobalRegister.instance.get(register_name)

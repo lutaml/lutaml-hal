@@ -9,7 +9,7 @@ module Lutaml
     class Link < Lutaml::Model::Serializable
       # This is the model register that has fetched the origin of this link, and
       # will be used to resolve unless overriden in resource#realize()
-      attr_accessor Hal::REGISTER_ID_ATTR_NAME.to_sym
+      attr_accessor :_global_register_id
 
       # Store reference to parent resource for automatic embedded content detection
       attr_accessor :parent_resource
@@ -27,17 +27,22 @@ module Lutaml
       # This method will use the global register according to the source of the Link object.
       # If the Link does not have a register, a register needs to be provided explicitly
       # via the `register:` parameter.
-      def realize(register: nil, parent_resource: nil)
+      def realize(register: nil, parent_resource: nil, force_refresh: false)
         # Use provided parent_resource or fall back to stored parent_resource
         effective_parent = parent_resource || @parent_resource
 
-        # First check if embedded content is available
-        if effective_parent && (embedded_content = check_embedded_content(effective_parent, register))
+        register = find_register(register)
+        raise "No register provided for link resolution (class: #{self.class}, href: #{href})" if register.nil?
+
+        # Priority 1: Check embedded content first (unless force_refresh)
+        if !force_refresh && effective_parent && (embedded_content = check_embedded_content(effective_parent, register))
+          # Cache embedded content too, so later lookups by href are served locally
+          register.cache_manager&.set(href, nil, embedded_content)
           return embedded_content
         end
 
-        register = find_register(register)
-        raise "No register provided for link resolution (class: #{self.class}, href: #{href})" if register.nil?
+        # Force refresh bypasses any cached entry for this href
+        register.cache_manager&.invalidate(href) if force_refresh
 
         Hal.debug_log "Resolving link href: #{href} using register"
         register.resolve_and_cast(self, href)
@@ -86,19 +91,19 @@ module Lutaml
 
         # Try to find the model class for this href
         href_path = href.sub(register.client.api_url, '') if register.client
-        model_class = register.send(:find_matching_model_class, href_path)
+        model_class = register.find_matching_model_class(href_path)
         return nil unless model_class
 
         # Create the resource from embedded data
-        resource = model_class.from_embedded(embedded_item, instance_variable_get("@#{Hal::REGISTER_ID_ATTR_NAME}"))
-        register.send(:mark_model_links_with_register, resource)
+        resource = model_class.from_embedded(embedded_item, _global_register_id)
+        register.mark_model_links_with_register(resource)
         resource
       end
 
       def find_register(explicit_register)
         return explicit_register if explicit_register
 
-        register_id = instance_variable_get("@#{Hal::REGISTER_ID_ATTR_NAME}")
+        register_id = _global_register_id
         return nil if register_id.nil?
 
         register = Lutaml::Hal::GlobalRegister.instance.get(register_id)

@@ -18,8 +18,6 @@ module Lutaml
         @connection = options[:connection] || create_connection
         @params_default = options[:params_default] || {}
         @debug = options[:debug] || !ENV['DEBUG_API'].nil?
-        @cache = options[:cache] || {}
-        @cache_enabled = options[:cache_enabled] || false
         @rate_limiter = options[:rate_limiter] || RateLimiter.new(options[:rate_limiting] || {})
 
         @api_url = strip_api_url(@api_url)
@@ -37,19 +35,19 @@ module Lutaml
         get(path, params)
       end
 
+      # Get a resource by its full URL with custom headers (e.g. conditional
+      # request headers for cache revalidation)
+      def get_by_url_with_headers(url, headers = {})
+        path = strip_api_url(url)
+        get_with_headers(path, headers)
+      end
+
       # Make a GET request to the API
       def get(url, params = {})
-        cache_key = "#{url}:#{params.to_json}"
-
-        return @cache[cache_key] if @cache_enabled && @cache.key?(cache_key)
-
-        response = @rate_limiter.with_rate_limiting do
+        @rate_limiter.with_rate_limiting do
           @last_response = @connection.get(url, params)
           handle_response(@last_response, url)
         end
-
-        @cache[cache_key] = response if @cache_enabled
-        response
       rescue Faraday::ConnectionFailed => e
         raise Lutaml::Hal::ConnectionError, "Connection failed: #{e.message}"
       rescue Faraday::TimeoutError => e
@@ -62,19 +60,12 @@ module Lutaml
 
       # Make a GET request with custom headers
       def get_with_headers(url, headers = {})
-        cache_key = "#{url}:#{headers.to_json}"
-
-        return @cache[cache_key] if @cache_enabled && @cache.key?(cache_key)
-
-        response = @rate_limiter.with_rate_limiting do
+        @rate_limiter.with_rate_limiting do
           @last_response = @connection.get(url) do |req|
             headers.each { |key, value| req.headers[key] = value }
           end
           handle_response(@last_response, url)
         end
-
-        @cache[cache_key] = response if @cache_enabled
-        response
       rescue Faraday::ConnectionFailed => e
         raise Lutaml::Hal::ConnectionError, "Connection failed: #{e.message}"
       rescue Faraday::TimeoutError => e

@@ -1,12 +1,11 @@
 # frozen_string_literal: true
 
 require 'lutaml/model'
+require 'lutaml/store'
 
 module Lutaml
   # HAL implementation for Lutaml
   module Hal
-    REGISTER_ID_ATTR_NAME = '_global_register_id'
-
     def self.debug_log(message)
       puts "[Lutaml::Hal] DEBUG: #{message}" if ENV['DEBUG_API']
     end

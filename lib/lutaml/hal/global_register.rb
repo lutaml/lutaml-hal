@@ -43,6 +43,25 @@ module Lutaml
       def unregister(name)
         delete(name)
       end
+
+      # Cache management methods for all registered model registers
+      def clear_all_caches
+        @model_registers.each_value do |register|
+          register.clear_cache if register.respond_to?(:clear_cache)
+        end
+      end
+
+      def cache_stats
+        stats = {}
+        @model_registers.each do |name, register|
+          stats[name] = register.cache_info if register.respond_to?(:cache_info)
+        end
+        stats
+      end
+
+      def list_registers
+        @model_registers.keys
+      end
     end
   end
 end
