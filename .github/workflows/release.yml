@@ -13,6 +13,15 @@ on:
   repository_dispatch:
     types: [ do-release ]
 
+# The reusable release workflow requires id-token: write (RubyGems Trusted
+# Publishing via OIDC). A reusable workflow cannot request more permissions
+# than its caller grants, so these must be declared here or the run fails at
+# startup. Keep in sync with the Cimas template.
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
 jobs:
   release:
     uses: metanorma/ci/.github/workflows/rubygems-release.yml@main
