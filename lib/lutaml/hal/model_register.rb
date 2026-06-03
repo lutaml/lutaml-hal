@@ -4,6 +4,7 @@ require 'cgi'
 require_relative 'errors'
 require_relative 'endpoint_configuration'
 require_relative 'cache/cache_manager'
+require_relative 'single_flight'
 
 module Lutaml
   module Hal
@@ -17,6 +18,7 @@ module Lutaml
         @client = client
         @models = {}
         @cache_manager = Cache::CacheManager.new(cache, client: @client) if cache
+        @single_flight = SingleFlight.new
       end
 
       # Register a model with its URL pattern and parameters
@@ -71,115 +73,32 @@ module Lutaml
         # Process parameters through EndpointParameter objects
         processed_params = process_parameters(endpoint[:parameters], params)
 
-        # Build URL with path parameters
+        # Build URL with path and query parameters
         url = build_url_with_path_params(endpoint[:url], processed_params[:path])
-
-        # Add query parameters
         final_url = build_url_with_query_params(url, processed_params[:query])
 
-        realized_model = nil
+        cached = cached_endpoint_model(final_url)
+        return cached if cached
 
-        # Check cache first
-        if @cache_manager&.available?
-          cached_entry = @cache_manager.get(final_url)
-          if cached_entry
-            debug_log("Cache hit for fetch: #{final_url}")
-            realized_model = cached_entry.hal_resource
-            # Return cached model directly if valid
-            mark_model_links_with_register(realized_model)
-            return realized_model
-          end
+        # Coalesce concurrent fetches of the same URL into a single request.
+        coalesce(final_url) do
+          cached_endpoint_model(final_url) ||
+            fetch_uncached(endpoint, final_url, processed_params[:headers])
         end
-
-        # Make request if not cached
-        # Add conditional headers if we have cached metadata
-        request_headers = processed_params[:headers].dup
-        if @cache_manager&.available?
-          conditional_headers = @cache_manager.conditional_request_headers(final_url)
-          request_headers.merge!(conditional_headers) if conditional_headers
-        end
-
-        # Make request with headers
-        response = if request_headers.any?
-                     client.get_with_headers(final_url, request_headers)
-                   else
-                     client.get(final_url)
-                   end
-
-        # Handle 304 Not Modified
-        if response.respond_to?(:status) && response.status == 304
-          @cache_manager&.refresh_entry(final_url, response)
-          cached_entry = @cache_manager.get(final_url)
-          realized_model = cached_entry.hal_resource if cached_entry
-        else
-          # Create model from response
-          realized_model = endpoint[:model].from_json(response.to_json)
-
-          # Cache the realized model with metadata
-          @cache_manager&.set(final_url, response, realized_model)
-        end
-
-        # Store embedded data for later resolution
-        realized_model.embedded_data = response['_embedded'] if realized_model && response && response['_embedded']
-
-        mark_model_links_with_register(realized_model)
-
-        realized_model
       end
 
       def resolve_and_cast(link, href)
         raise 'Client not configured' unless client
 
-        # Check cache first
-        if @cache_manager&.available?
-          cached_entry = @cache_manager.get(href)
-          if cached_entry
-            debug_log("Cache hit for: #{href}")
-            cached_model = cached_entry.hal_resource
-            # A model rebuilt from a persistent cache needs to be (re)marked so
-            # its links can be realized against this register.
-            mark_model_links_with_register(cached_model)
-            return cached_model
-          end
-        end
+        cached = cached_resolved_model(href)
+        return cached if cached
 
         debug_log("resolve_and_cast: link #{link}, href #{href}")
 
-        # Add conditional headers if we have cached metadata
-        conditional_headers = @cache_manager&.conditional_request_headers(href) || {}
-
-        response = if conditional_headers.any?
-                     client.get_by_url_with_headers(href, conditional_headers)
-                   else
-                     client.get_by_url(href)
-                   end
-
-        # Handle 304 Not Modified
-        if response.respond_to?(:status) && response.status == 304
-          @cache_manager&.refresh_entry(href, response)
-          cached_entry = @cache_manager.get(href)
-          return cached_entry.hal_resource if cached_entry
+        # Coalesce concurrent resolutions of the same href into one request.
+        coalesce(href) do
+          cached_resolved_model(href) || resolve_and_cast_uncached(href)
         end
-
-        # TODO: Merge full Link content into the resource?
-        response_with_link_details = response.to_h.merge({ 'href' => href })
-
-        href_path = href.sub(client.api_url, '')
-
-        model_class = find_matching_model_class(href_path)
-        raise LinkResolutionError, "Unregistered URL pattern: #{href}" unless model_class
-
-        debug_log("resolve_and_cast: resolved to model_class #{model_class}")
-        debug_log("resolve_and_cast: response: #{response.inspect}")
-        debug_log("resolve_and_cast: amended: #{response_with_link_details}")
-
-        model = model_class.from_json(response_with_link_details.to_json)
-        mark_model_links_with_register(model)
-
-        # Cache the realized model with metadata
-        @cache_manager&.set(href, response, model)
-
-        model
       end
 
       # Recursively mark all models in the link with the register name
@@ -246,6 +165,104 @@ module Lutaml
 
       def debug_log(message)
         puts "[Lutaml::Hal] DEBUG: #{message}" if ENV['DEBUG_API']
+      end
+
+      # Run the block, coalescing concurrent calls that share `key` into one
+      # execution (single-flight) so duplicate in-flight requests for the same
+      # URL collapse into a single fetch. Only active when caching is enabled —
+      # the cache is what lets the shared result be reused. Different keys run
+      # in parallel.
+      def coalesce(key, &block)
+        return block.call unless @cache_manager&.available?
+
+        @single_flight.run(key, &block)
+      end
+
+      # Cached, register-marked model for a fully-built endpoint URL, or nil.
+      def cached_endpoint_model(url)
+        return nil unless @cache_manager&.available?
+
+        entry = @cache_manager.get(url)
+        return nil unless entry
+
+        debug_log("Cache hit for fetch: #{url}")
+        model = entry.hal_resource
+        mark_model_links_with_register(model)
+        model
+      end
+
+      # The fetch miss path: HTTP request, 304 handling, model build and cache.
+      def fetch_uncached(endpoint, final_url, headers)
+        request_headers = headers.dup
+        if @cache_manager&.available?
+          conditional_headers = @cache_manager.conditional_request_headers(final_url)
+          request_headers.merge!(conditional_headers) if conditional_headers
+        end
+
+        response = if request_headers.any?
+                     client.get_with_headers(final_url, request_headers)
+                   else
+                     client.get(final_url)
+                   end
+
+        if response.respond_to?(:status) && response.status == 304
+          @cache_manager&.refresh_entry(final_url, response)
+          cached_entry = @cache_manager.get(final_url)
+          realized_model = cached_entry.hal_resource if cached_entry
+        else
+          realized_model = endpoint[:model].from_json(response.to_json)
+          @cache_manager&.set(final_url, response, realized_model)
+        end
+
+        realized_model.embedded_data = response['_embedded'] if realized_model && response && response['_embedded']
+        mark_model_links_with_register(realized_model)
+        realized_model
+      end
+
+      # Cached, register-marked model for a link href, or nil.
+      def cached_resolved_model(href)
+        return nil unless @cache_manager&.available?
+
+        entry = @cache_manager.get(href)
+        return nil unless entry
+
+        debug_log("Cache hit for: #{href}")
+        model = entry.hal_resource
+        # A model rebuilt from a persistent cache needs to be (re)marked so its
+        # links can be realized against this register.
+        mark_model_links_with_register(model)
+        model
+      end
+
+      # The resolve_and_cast miss path: HTTP request, 304 handling, model build
+      # and cache.
+      def resolve_and_cast_uncached(href)
+        conditional_headers = @cache_manager&.conditional_request_headers(href) || {}
+
+        response = if conditional_headers.any?
+                     client.get_by_url_with_headers(href, conditional_headers)
+                   else
+                     client.get_by_url(href)
+                   end
+
+        if response.respond_to?(:status) && response.status == 304
+          @cache_manager&.refresh_entry(href, response)
+          cached_entry = @cache_manager.get(href)
+          return cached_entry.hal_resource if cached_entry
+        end
+
+        # TODO: Merge full Link content into the resource?
+        response_with_link_details = response.to_h.merge({ 'href' => href })
+        href_path = href.sub(client.api_url, '')
+
+        model_class = find_matching_model_class(href_path)
+        raise LinkResolutionError, "Unregistered URL pattern: #{href}" unless model_class
+
+        debug_log("resolve_and_cast: resolved to model_class #{model_class}")
+        model = model_class.from_json(response_with_link_details.to_json)
+        mark_model_links_with_register(model)
+        @cache_manager&.set(href, response, model)
+        model
       end
 
       def process_parameters(parameter_definitions, provided_params)
