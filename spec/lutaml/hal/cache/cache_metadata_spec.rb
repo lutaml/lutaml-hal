@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
-require 'rspec'
-require_relative '../../../../lib/lutaml/hal/cache/cache_metadata'
+require 'spec_helper'
 
 RSpec.describe Lutaml::Hal::Cache::CacheMetadata do
   describe '.from_response' do
@@ -34,10 +33,10 @@ RSpec.describe Lutaml::Hal::Cache::CacheMetadata do
 
     context 'with response object with headers method' do
       let(:response) do
-        double('response', headers: {
-                 'etag' => '"def456"',
-                 'cache-control' => 'no-cache'
-               })
+        Struct.new(:headers, :status).new(
+          { 'etag' => '"def456"', 'cache-control' => 'no-cache' },
+          200
+        )
       end
 
       it 'extracts metadata from response headers' do
@@ -51,7 +50,10 @@ RSpec.describe Lutaml::Hal::Cache::CacheMetadata do
 
     context 'with response object with status method' do
       let(:response) do
-        double('response', status: 304, headers: { 'etag' => '"ghi789"' })
+        Struct.new(:headers, :status).new(
+          { 'etag' => '"ghi789"' },
+          304
+        )
       end
 
       it 'extracts status code from response' do

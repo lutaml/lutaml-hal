@@ -278,9 +278,7 @@ RSpec.describe Lutaml::Hal::Page do
 
     describe 'pagination navigation methods' do
       before do
-        # Set up the page with the register for navigation
         @page_1 = register.fetch(:pages_index)
-        @page_1.instance_variable_set(:@register, register)
       end
 
       describe '#next_page' do

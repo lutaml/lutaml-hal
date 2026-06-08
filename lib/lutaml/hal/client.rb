@@ -4,12 +4,9 @@ require 'faraday'
 require 'faraday/follow_redirects'
 require 'json'
 require 'rainbow'
-require_relative 'errors'
-require_relative 'rate_limiter'
 
 module Lutaml
   module Hal
-    # HAL Client for making HTTP requests to HAL APIs
     class Client
       attr_reader :last_response, :api_url, :connection, :rate_limiter
 
@@ -19,46 +16,38 @@ module Lutaml
         @params_default = options[:params_default] || {}
         @debug = options[:debug] || !ENV['DEBUG_API'].nil?
         @rate_limiter = options[:rate_limiter] || RateLimiter.new(options[:rate_limiting] || {})
-
         @api_url = strip_api_url(@api_url)
       end
 
-      # Strip any trailing slash from the API URL
       def strip_api_url(url)
         url.sub(%r{/\Z}, '')
       end
 
-      # Get a resource by its full URL
       def get_by_url(url, params = {})
-        # Strip API endpoint if it's included
         path = strip_api_url(url)
         get(path, params)
       end
 
-      # Get a resource by its full URL with custom headers (e.g. conditional
-      # request headers for cache revalidation)
       def get_by_url_with_headers(url, headers = {})
         path = strip_api_url(url)
         get_with_headers(path, headers)
       end
 
-      # Make a GET request to the API
       def get(url, params = {})
         @rate_limiter.with_rate_limiting do
           @last_response = @connection.get(url, params)
           handle_response(@last_response, url)
         end
       rescue Faraday::ConnectionFailed => e
-        raise Lutaml::Hal::ConnectionError, "Connection failed: #{e.message}"
+        raise ConnectionError, "Connection failed: #{e.message}"
       rescue Faraday::TimeoutError => e
-        raise Lutaml::Hal::TimeoutError, "Request timed out: #{e.message}"
+        raise TimeoutError, "Request timed out: #{e.message}"
       rescue Faraday::ParsingError => e
-        raise Lutaml::Hal::ParsingError, "Response parsing error: #{e.message}"
+        raise ParsingError, "Response parsing error: #{e.message}"
       rescue Faraday::Adapter::Test::Stubs::NotFound => e
-        raise Lutaml::Hal::LinkResolutionError, "Resource not found: #{e.message}"
+        raise LinkResolutionError, "Resource not found: #{e.message}"
       end
 
-      # Make a GET request with custom headers
       def get_with_headers(url, headers = {})
         @rate_limiter.with_rate_limiting do
           @last_response = @connection.get(url) do |req|
@@ -67,13 +56,13 @@ module Lutaml
           handle_response(@last_response, url)
         end
       rescue Faraday::ConnectionFailed => e
-        raise Lutaml::Hal::ConnectionError, "Connection failed: #{e.message}"
+        raise ConnectionError, "Connection failed: #{e.message}"
       rescue Faraday::TimeoutError => e
-        raise Lutaml::Hal::TimeoutError, "Request timed out: #{e.message}"
+        raise TimeoutError, "Request timed out: #{e.message}"
       rescue Faraday::ParsingError => e
-        raise Lutaml::Hal::ParsingError, "Response parsing error: #{e.message}"
+        raise ParsingError, "Response parsing error: #{e.message}"
       rescue Faraday::Adapter::Test::Stubs::NotFound => e
-        raise Lutaml::Hal::LinkResolutionError, "Resource not found: #{e.message}"
+        raise LinkResolutionError, "Resource not found: #{e.message}"
       end
 
       private
@@ -124,7 +113,6 @@ module Lutaml
         puts "URL: #{url}"
         puts "Status: #{response.status}"
 
-        # Format headers as JSON
         puts "\nHeaders:"
         headers_hash = response.headers.to_h
         puts JSON.pretty_generate(headers_hash)

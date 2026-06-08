@@ -1,11 +1,7 @@
 # frozen_string_literal: true
 
-require_relative 'link'
-require_relative 'type_resolver'
-
 module Lutaml
   module Hal
-    # Factory class responsible for creating dynamic Link classes
     class LinkClassFactory
       def self.create_for(resource_class, realize_class_name)
         new(resource_class, realize_class_name).create
@@ -74,8 +70,6 @@ module Lutaml
       def register_constant(klass, class_names)
         parent_klass = resolve_parent_class(class_names[:parent_namespace])
 
-        # Avoid registering constants on Object in test scenarios
-        # This prevents conflicts with test mocks that expect specific const_set calls
         return if parent_klass == Object && in_test_environment?
 
         parent_klass.const_set(class_names[:child_name], klass)
@@ -92,7 +86,6 @@ module Lutaml
       end
 
       def in_test_environment?
-        # Check if we're in a test environment by looking for RSpec or test-related constants
         defined?(RSpec) || defined?(Test::Unit) || ENV['RAILS_ENV'] == 'test' || ENV['RACK_ENV'] == 'test'
       end
     end

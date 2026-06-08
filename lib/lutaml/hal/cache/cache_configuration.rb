@@ -5,23 +5,16 @@ require 'lutaml/model'
 module Lutaml
   module Hal
     module Cache
-      # Represents cache configuration with validation and defaults
       class CacheConfiguration < Lutaml::Model::Serializable
         attribute :adapter_type, :string
         attribute :adapter_config, :hash
         attribute :ttl, :integer
         attribute :max_size, :integer
-        attribute :http_aware, :boolean
-        attribute :respect_http_headers, :boolean
-        attribute :enable_conditional_requests, :boolean
-        attribute :ignore_query_params, :string
 
-        # Default configuration values
         DEFAULT_TTL = 3600
         DEFAULT_MAX_SIZE = 1000
         DEFAULT_ADAPTER_TYPE = 'memory'
 
-        # Create configuration from hash or symbol
         def self.from_config(config)
           return new if config.nil?
 
@@ -35,7 +28,6 @@ module Lutaml
           end
         end
 
-        # Validate the configuration
         def validate!
           validate_adapter_type!
           validate_ttl!
@@ -43,80 +35,48 @@ module Lutaml
           validate_adapter_config!
         end
 
-        # Check if HTTP-aware caching should be used
-        #
-        # HTTP-aware caching (conditional requests backed by a response cache)
-        # is opt-in: it only applies when explicitly enabled and the
-        # lutaml-store HTTP cache backend is available. By default the register
-        # uses the basic object cache, which stores realized models directly.
-        def http_aware?
-          http_aware == true && http_cache_available?
-        end
-
-        # Check if basic caching should be used
-        def basic_cache?
-          !http_aware?
-        end
-
-        # Get the effective TTL (with fallback to default)
         def effective_ttl
           ttl || DEFAULT_TTL
         end
 
-        # Get the effective max size (with fallback to default)
         def effective_max_size
           max_size || DEFAULT_MAX_SIZE
         end
 
-        # Get the effective adapter type (with fallback to default)
         def effective_adapter_type
           adapter_type || DEFAULT_ADAPTER_TYPE
         end
 
-        # Get HTTP cache configuration hash
-        def http_cache_config
-          {
-            adapter_type: effective_adapter_type.to_sym,
-            default_ttl: effective_ttl,
-            max_entries: effective_max_size,
-            respect_http_headers: respect_http_headers != false,
-            enable_conditional_requests: enable_conditional_requests != false,
-            ignore_query_params: parse_ignore_query_params
-          }.merge(adapter_config || {})
-        end
-
-        # Get basic cache configuration hash
-        def basic_cache_config
-          {
-            adapter: adapter_config || { type: effective_adapter_type.to_sym },
+        def to_cache_store_config
+          base = {
+            adapter: { type: effective_adapter_type.to_sym },
             default_ttl: effective_ttl,
             max_size: effective_max_size
           }
+          options = adapter_config&.dig(:options) || adapter_config&.dig('options')
+          base[:adapter_options] = options if options
+          base
         end
 
         private
 
         def self.from_hash(config)
           adapter_info = config[:adapter] || config['adapter'] || {}
-
-          # Handle direct adapter_type specification
-          adapter_type = config[:adapter_type] || config['adapter_type'] || extract_adapter_type(adapter_info)
+          adapter_type = config_value(config, :adapter_type) || extract_adapter_type(adapter_info)
 
           new(
             adapter_type: adapter_type,
             adapter_config: adapter_info.is_a?(Hash) ? adapter_info : nil,
-            ttl: config[:ttl] || config['ttl'],
-            max_size: config[:max_size] || config['max_size'],
-            http_aware: config.key?(:http_aware) ? config[:http_aware] : config['http_aware'],
-            respect_http_headers: config.key?(:respect_http_headers) ? config[:respect_http_headers] : config['respect_http_headers'],
-            enable_conditional_requests: config.key?(:enable_conditional_requests) ? config[:enable_conditional_requests] : config['enable_conditional_requests'],
-            ignore_query_params: config[:ignore_query_params] || config['ignore_query_params']
+            ttl: config_value(config, :ttl),
+            max_size: config_value(config, :max_size)
           )
         end
+        private_class_method :from_hash
 
         def self.from_simple_config(config)
           new(adapter_type: config.to_s)
         end
+        private_class_method :from_simple_config
 
         def self.extract_adapter_type(adapter_info)
           case adapter_info
@@ -127,6 +87,12 @@ module Lutaml
             adapter_info.to_s
           end
         end
+        private_class_method :extract_adapter_type
+
+        def self.config_value(config, key)
+          config[key] || config[key.to_s]
+        end
+        private_class_method :config_value
 
         def validate_adapter_type!
           valid_types = %w[memory filesystem sqlite]
@@ -154,30 +120,6 @@ module Lutaml
           return if adapter_config.is_a?(Hash)
 
           raise ArgumentError, "Adapter config must be a hash, got: #{adapter_config.class}"
-        end
-
-        # Override the setter to validate before assignment
-        def adapter_config=(value)
-          raise ArgumentError, "Adapter config must be a hash, got: #{value.class}" if value && !value.is_a?(Hash)
-
-          super(value)
-        end
-
-        def http_cache_available?
-          defined?(::Lutaml::Store::HttpCache)
-        end
-
-        def parse_ignore_query_params
-          return [] unless ignore_query_params
-
-          case ignore_query_params
-          when String
-            ignore_query_params.split(',').map(&:strip)
-          when Array
-            ignore_query_params
-          else
-            []
-          end
         end
       end
     end

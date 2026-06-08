@@ -348,7 +348,7 @@ def demo_cache_performance
   puts "Request reduction: #{((no_cache_requests - cache_requests).to_f / no_cache_requests * 100).round(1)}%"
 end
 
-if __FILE__ == $0
+if __FILE__ == $PROGRAM_NAME
   demo_cache_integration
   demo_cache_configuration_options
   demo_cache_performance

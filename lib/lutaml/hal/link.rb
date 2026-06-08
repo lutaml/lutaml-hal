@@ -1,18 +1,11 @@
 # frozen_string_literal: true
 
 require 'lutaml/model'
-require_relative 'model_register'
 
 module Lutaml
   module Hal
-    # HAL Link representation with realization capability
     class Link < Lutaml::Model::Serializable
-      # This is the model register that has fetched the origin of this link, and
-      # will be used to resolve unless overriden in resource#realize()
-      attr_accessor :_global_register_id
-
-      # Store reference to parent resource for automatic embedded content detection
-      attr_accessor :parent_resource
+      attr_accessor :_global_register_id, :parent_resource
 
       attribute :href, :string
       attribute :title, :string
@@ -23,25 +16,17 @@ module Lutaml
       attribute :profile, :string
       attribute :lang, :string
 
-      # Fetch the actual resource this link points to.
-      # This method will use the global register according to the source of the Link object.
-      # If the Link does not have a register, a register needs to be provided explicitly
-      # via the `register:` parameter.
       def realize(register: nil, parent_resource: nil, force_refresh: false)
-        # Use provided parent_resource or fall back to stored parent_resource
         effective_parent = parent_resource || @parent_resource
 
         register = find_register(register)
         raise "No register provided for link resolution (class: #{self.class}, href: #{href})" if register.nil?
 
-        # Priority 1: Check embedded content first (unless force_refresh)
         if !force_refresh && effective_parent && (embedded_content = check_embedded_content(effective_parent, register))
-          # Cache embedded content too, so later lookups by href are served locally
           register.cache_manager&.set(href, nil, embedded_content)
           return embedded_content
         end
 
-        # Force refresh bypasses any cached entry for this href
         register.cache_manager&.invalidate(href) if force_refresh
 
         Hal.debug_log "Resolving link href: #{href} using register"
@@ -51,17 +36,12 @@ module Lutaml
       private
 
       def check_embedded_content(parent_resource, register = nil)
-        return nil unless parent_resource.respond_to?(:embedded_data)
+        return nil unless parent_resource.is_a?(Resource) && parent_resource.embedded_data
 
-        # Try to find embedded content that matches this link
-        # Look for embedded content by matching the link's key or href pattern
         embedded_data = parent_resource.embedded_data
         return nil unless embedded_data
 
-        # Try to find matching embedded content
-        # This is a simplified approach - in practice, you might need more sophisticated matching
         embedded_data.each_value do |content|
-          # If content is an array, check if any item matches this link
           if content.is_a?(Array)
             matching_item = content.find { |item| matches_embedded_item?(item) }
             return create_embedded_resource(matching_item, parent_resource, register) if matching_item
@@ -76,25 +56,17 @@ module Lutaml
       def matches_embedded_item?(item)
         return false unless item.is_a?(Hash)
 
-        # Check if the embedded item's self link matches this link's href
-        item_self_link = item.dig('_links', 'self', 'href')
-        return true if item_self_link == href
-
-        # Additional matching logic could be added here
-        false
+        item.dig('_links', 'self', 'href') == href
       end
 
       def create_embedded_resource(embedded_item, _parent_resource, register = nil)
-        # Get the register to determine the appropriate model class
         register = find_register(register)
         return nil unless register
 
-        # Try to find the model class for this href
         href_path = href.sub(register.client.api_url, '') if register.client
         model_class = register.find_matching_model_class(href_path)
         return nil unless model_class
 
-        # Create the resource from embedded data
         resource = model_class.from_embedded(embedded_item, _global_register_id)
         register.mark_model_links_with_register(resource)
         resource
@@ -106,7 +78,7 @@ module Lutaml
         register_id = _global_register_id
         return nil if register_id.nil?
 
-        register = Lutaml::Hal::GlobalRegister.instance.get(register_id)
+        register = GlobalRegister.instance.get(register_id)
         if register.nil?
           raise 'GlobalRegister in use but unable to find the register. '\
             'Please provide a register to the `#realize` method to resolve the link'

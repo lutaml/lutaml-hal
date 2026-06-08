@@ -1,12 +1,10 @@
 # frozen_string_literal: true
 
-require 'rspec'
-require_relative '../../../../lib/lutaml/hal/cache/cache_entry'
-require_relative '../../../../lib/lutaml/hal/cache/cache_metadata'
+require 'spec_helper'
 
 RSpec.describe Lutaml::Hal::Cache::CacheEntry do
   let(:url) { 'http://example.com/api/resource' }
-  let(:hal_resource) { double('HAL Resource') }
+  let(:hal_resource) { Struct.new(:id, :name).new('res-1', 'Resource') }
   let(:response) do
     {
       'etag' => '"abc123"',
@@ -42,30 +40,30 @@ RSpec.describe Lutaml::Hal::Cache::CacheEntry do
 
     context 'when entry is fresh' do
       it 'returns true if within TTL' do
-        current_time = cached_at + 1800 # 30 minutes later
+        current_time = cached_at + 1800
         allow(Time).to receive(:now).and_return(current_time)
 
         expect(entry.valid?(7200)).to be true
       end
 
       it 'uses metadata max-age over default TTL' do
-        current_time = cached_at + 1800 # 30 minutes later
+        current_time = cached_at + 1800
         allow(Time).to receive(:now).and_return(current_time)
 
-        expect(entry.valid?(300)).to be true # metadata max-age=3600 overrides default 300
+        expect(entry.valid?(300)).to be true
       end
     end
 
     context 'when entry is expired' do
       it 'returns false if beyond TTL' do
-        current_time = cached_at + 7200 # 2 hours later
+        current_time = cached_at + 7200
         allow(Time).to receive(:now).and_return(current_time)
 
         expect(entry.valid?(3600)).to be false
       end
 
       it 'returns false if beyond metadata max-age' do
-        current_time = cached_at + 4000 # Beyond max-age=3600
+        current_time = cached_at + 4000
         allow(Time).to receive(:now).and_return(current_time)
 
         expect(entry.valid?(7200)).to be false
@@ -240,7 +238,7 @@ RSpec.describe Lutaml::Hal::Cache::CacheEntry do
     end
 
     it 'returns age in seconds' do
-      current_time = cached_at + 1800 # 30 minutes later
+      current_time = cached_at + 1800
       allow(Time).to receive(:now).and_return(current_time)
 
       expect(entry.age).to eq(1800)
@@ -267,7 +265,7 @@ RSpec.describe Lutaml::Hal::Cache::CacheEntry do
 
     context 'when entry is still fresh' do
       it 'returns false' do
-        current_time = cached_at + 1800 # Still within max-age
+        current_time = cached_at + 1800
         allow(Time).to receive(:now).and_return(current_time)
 
         expect(entry.serve_stale?(7200)).to be false
@@ -276,7 +274,7 @@ RSpec.describe Lutaml::Hal::Cache::CacheEntry do
 
     context 'when entry is stale but within max_stale' do
       it 'returns true' do
-        current_time = cached_at + 5400 # Beyond max-age=3600 but within max_stale=7200
+        current_time = cached_at + 5400
         allow(Time).to receive(:now).and_return(current_time)
 
         expect(entry.serve_stale?(7200)).to be true
@@ -285,7 +283,7 @@ RSpec.describe Lutaml::Hal::Cache::CacheEntry do
 
     context 'when entry is beyond max_stale' do
       it 'returns false' do
-        current_time = cached_at + 10_800 # Beyond both max-age and max_stale
+        current_time = cached_at + 10_800
         allow(Time).to receive(:now).and_return(current_time)
 
         expect(entry.serve_stale?(7200)).to be false
