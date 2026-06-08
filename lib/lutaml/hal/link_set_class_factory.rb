@@ -1,10 +1,7 @@
 # frozen_string_literal: true
 
-require_relative 'link_set'
-
 module Lutaml
   module Hal
-    # Factory class responsible for creating dynamic LinkSet classes
     class LinkSetClassFactory
       def self.create_for(resource_class)
         new(resource_class).create
@@ -79,7 +76,6 @@ module Lutaml
       end
 
       def setup_resource_mapping(link_set_class)
-        # Define the LinkSet class with mapping inside the resource class
         @resource_class.class_eval do
           attribute :links, link_set_class
           key_value do

@@ -1,39 +1,29 @@
 # frozen_string_literal: true
 
 require 'cgi'
-require_relative 'errors'
-require_relative 'endpoint_configuration'
-require_relative 'cache/cache_manager'
-require_relative 'single_flight'
 
 module Lutaml
   module Hal
-    # Register to map URL patterns to model classes with EndpointParameter support
     class ModelRegister
       attr_accessor :models, :client, :register_name, :cache_manager
 
       def initialize(name:, client: nil, cache: nil)
         @register_name = name
-        # If `client` is not set, it can be set later
         @client = client
         @models = {}
         @cache_manager = Cache::CacheManager.new(cache, client: @client) if cache
         @single_flight = SingleFlight.new
       end
 
-      # Register a model with its URL pattern and parameters
       def add_endpoint(id:, type:, url:, model:, parameters: [])
         @models ||= {}
 
         raise "Model with ID #{id} already registered" if @models[id]
 
-        # Validate all parameters
         parameters.each(&:validate!)
 
-        # Ensure path parameters in URL have corresponding parameter definitions
         validate_path_parameters(url, parameters)
 
-        # Check for duplicate endpoints
         if @models.values.any? do |m|
           m[:url] == url && m[:type] == type && parameters_match?(m[:parameters], parameters)
         end
@@ -49,7 +39,6 @@ module Lutaml
         }
       end
 
-      # Register an endpoint using block configuration syntax
       def register_endpoint(id, model, type: :index)
         config = EndpointConfiguration.new
         yield(config) if block_given?
@@ -65,22 +54,18 @@ module Lutaml
         )
       end
 
-      # Resolve and cast data to the appropriate model based on URL
       def fetch(endpoint_id, **params)
         endpoint = @models[endpoint_id] || raise("Unknown endpoint: #{endpoint_id}")
         raise 'Client not configured' unless client
 
-        # Process parameters through EndpointParameter objects
         processed_params = process_parameters(endpoint[:parameters], params)
 
-        # Build URL with path and query parameters
         url = build_url_with_path_params(endpoint[:url], processed_params[:path])
         final_url = build_url_with_query_params(url, processed_params[:query])
 
         cached = cached_endpoint_model(final_url)
         return cached if cached
 
-        # Coalesce concurrent fetches of the same URL into a single request.
         coalesce(final_url) do
           cached_endpoint_model(final_url) ||
             fetch_uncached(endpoint, final_url, processed_params[:headers])
@@ -95,36 +80,29 @@ module Lutaml
 
         debug_log("resolve_and_cast: link #{link}, href #{href}")
 
-        # Coalesce concurrent resolutions of the same href into one request.
         coalesce(href) do
           cached_resolved_model(href) || resolve_and_cast_uncached(href)
         end
       end
 
-      # Recursively mark all models in the link with the register name
-      # This is used to ensure that all links in the model are registered
-      # with the same register name for consistent resolution
       def mark_model_links_with_register(inspecting_model)
         return unless inspecting_model.is_a?(Lutaml::Model::Serializable)
 
         inspecting_model._global_register_id = @register_name
 
-        # Recursively process model attributes to mark links with this register
         inspecting_model.class.attributes.each_pair do |key, config|
           attr_type = config.type
           next unless attr_type < Lutaml::Hal::Resource ||
                       attr_type < Lutaml::Hal::Link ||
                       attr_type < Lutaml::Hal::LinkSet
 
-          value = inspecting_model.send(key)
+          value = inspecting_model.public_send(key)
           next if value.nil?
 
-          # Handle both array and single values with the same logic
           values = value.is_a?(Array) ? value : [value]
           values.each do |item|
             mark_model_links_with_register(item)
 
-            # If this is a Link, set the parent resource for automatic embedded content detection
             item.parent_resource = inspecting_model if item.is_a?(Lutaml::Hal::Link)
           end
         end
@@ -132,7 +110,6 @@ module Lutaml
         inspecting_model
       end
 
-      # Cache management methods
       def cache_stats
         @cache_manager&.stats || {}
       end
@@ -145,17 +122,13 @@ module Lutaml
         @cache_manager&.info
       end
 
-      # Find the registered model class whose URL pattern matches the given href.
-      # Public so that Link#realize can resolve embedded resources.
       def find_matching_model_class(href)
-        # Find all matching patterns and select the most specific one (longest pattern)
         matching_models = @models.values.select do |model_data|
           matches_url_with_params?(model_data, href)
         end
 
         return nil if matching_models.empty?
 
-        # Sort by pattern length (descending) to get the most specific match first
         result = matching_models.max_by { |model_data| model_data[:url].length }
 
         result[:model]
@@ -164,21 +137,15 @@ module Lutaml
       private
 
       def debug_log(message)
-        puts "[Lutaml::Hal] DEBUG: #{message}" if ENV['DEBUG_API']
+        Hal.debug_log(message)
       end
 
-      # Run the block, coalescing concurrent calls that share `key` into one
-      # execution (single-flight) so duplicate in-flight requests for the same
-      # URL collapse into a single fetch. Only active when caching is enabled —
-      # the cache is what lets the shared result be reused. Different keys run
-      # in parallel.
       def coalesce(key, &block)
         return block.call unless @cache_manager&.available?
 
         @single_flight.run(key, &block)
       end
 
-      # Cached, register-marked model for a fully-built endpoint URL, or nil.
       def cached_endpoint_model(url)
         return nil unless @cache_manager&.available?
 
@@ -191,7 +158,6 @@ module Lutaml
         model
       end
 
-      # The fetch miss path: HTTP request, 304 handling, model build and cache.
       def fetch_uncached(endpoint, final_url, headers)
         request_headers = headers.dup
         if @cache_manager&.available?
@@ -205,21 +171,13 @@ module Lutaml
                      client.get(final_url)
                    end
 
-        if response.respond_to?(:status) && response.status == 304
-          @cache_manager&.refresh_entry(final_url, response)
-          cached_entry = @cache_manager.get(final_url)
-          realized_model = cached_entry.hal_resource if cached_entry
-        else
-          realized_model = endpoint[:model].from_json(response.to_json)
-          @cache_manager&.set(final_url, response, realized_model)
-        end
+        realized_model = build_model_from_response(response, final_url, endpoint[:model])
 
         realized_model.embedded_data = response['_embedded'] if realized_model && response && response['_embedded']
         mark_model_links_with_register(realized_model)
         realized_model
       end
 
-      # Cached, register-marked model for a link href, or nil.
       def cached_resolved_model(href)
         return nil unless @cache_manager&.available?
 
@@ -228,14 +186,10 @@ module Lutaml
 
         debug_log("Cache hit for: #{href}")
         model = entry.hal_resource
-        # A model rebuilt from a persistent cache needs to be (re)marked so its
-        # links can be realized against this register.
         mark_model_links_with_register(model)
         model
       end
 
-      # The resolve_and_cast miss path: HTTP request, 304 handling, model build
-      # and cache.
       def resolve_and_cast_uncached(href)
         conditional_headers = @cache_manager&.conditional_request_headers(href) || {}
 
@@ -245,24 +199,30 @@ module Lutaml
                      client.get_by_url(href)
                    end
 
-        if response.respond_to?(:status) && response.status == 304
-          @cache_manager&.refresh_entry(href, response)
-          cached_entry = @cache_manager.get(href)
-          return cached_entry.hal_resource if cached_entry
-        end
-
-        # TODO: Merge full Link content into the resource?
-        response_with_link_details = response.to_h.merge({ 'href' => href })
         href_path = href.sub(client.api_url, '')
 
         model_class = find_matching_model_class(href_path)
         raise LinkResolutionError, "Unregistered URL pattern: #{href}" unless model_class
 
         debug_log("resolve_and_cast: resolved to model_class #{model_class}")
+
+        response_with_link_details = response.to_h.merge({ 'href' => href })
         model = model_class.from_json(response_with_link_details.to_json)
         mark_model_links_with_register(model)
         @cache_manager&.set(href, response, model)
         model
+      end
+
+      def build_model_from_response(response, url, model_class)
+        if response.is_a?(Hash) && response['status'] == 304
+          @cache_manager&.refresh_entry(url, response)
+          cached_entry = @cache_manager.get(url)
+          return cached_entry&.hal_resource
+        end
+
+        realized_model = model_class.from_json(response.to_json)
+        @cache_manager&.set(url, response, realized_model)
+        realized_model
       end
 
       def process_parameters(parameter_definitions, provided_params)
@@ -272,23 +232,18 @@ module Lutaml
           param_name = param_def.name.to_sym
           provided_value = provided_params[param_name]
 
-          # Check required parameters
           if param_def.required && provided_value.nil?
             raise ArgumentError, "Required parameter '#{param_def.name}' is missing"
           end
 
-          # Use default value if not provided
           value = provided_value || param_def.default_value
 
-          # Skip if still nil and not required
           next if value.nil?
 
-          # Validate parameter value
           unless param_def.validate_value(value)
             raise ArgumentError, "Invalid value for parameter '#{param_def.name}': #{value}"
           end
 
-          # Store in appropriate category
           case param_def.location
           when :path
             result[:path][param_def.name] = value
@@ -305,19 +260,15 @@ module Lutaml
       end
 
       def validate_path_parameters(url, parameters)
-        # Extract path parameter names from URL template
         url_params = url.scan(/\{([^}]+)\}/).flatten
 
-        # Find path parameters in parameter definitions
         path_params = parameters.select(&:path_parameter?).map(&:name)
 
-        # Check that all URL parameters have definitions
         missing_params = url_params - path_params
         unless missing_params.empty?
           raise ArgumentError, "URL contains undefined path parameters: #{missing_params.join(', ')}"
         end
 
-        # Check that all path parameter definitions are used in URL
         unused_params = path_params - url_params
         return if unused_params.empty?
 
@@ -341,12 +292,9 @@ module Lutaml
       end
 
       def build_url_with_query_params(base_url, query_params, params = nil)
-        # Handle both 2-argument and 3-argument calls for backward compatibility
         if params.nil?
-          # 2-argument call: query_params is the final query parameters
           final_query_params = query_params
         else
-          # 3-argument call: query_params is template, params contains values
           final_query_params = {}
           query_params.each do |key, template_value|
             if template_value.is_a?(String) && template_value.match?(/\{(\w+)\}/)
@@ -364,7 +312,6 @@ module Lutaml
         "#{base_url}?#{query_string}"
       end
 
-      # Interpolate path parameters in a URL template
       def interpolate_url(url_template, params)
         params.reduce(url_template) do |url, (key, value)|
           url.gsub("{#{key}}", value.to_s)
@@ -383,7 +330,6 @@ module Lutaml
         path_match_result = path_matches?(pattern_path, uri.path)
         return false unless path_match_result
 
-        # Check query parameters if any are defined
         query_params = parameters.select(&:query_parameter?)
         return true if query_params.empty?
 
@@ -405,21 +351,17 @@ module Lutaml
       end
 
       def query_params_match?(expected_params, actual_params)
-        # Query parameters should be optional unless marked as required
         expected_params.all? do |param_def|
           actual_value = actual_params[param_def.name]
 
-          # Required parameters must be present
           if param_def.required
             return false if actual_value.nil?
 
             return param_def.validate_value(actual_value)
           end
 
-          # Optional parameters are always considered matching if not present
           return true if actual_value.nil?
 
-          # If present, they must be valid
           param_def.validate_value(actual_value)
         end
       end
@@ -433,14 +375,10 @@ module Lutaml
         end
       end
 
-      # Match URL pattern (supports {param} templates)
       def pattern_match?(pattern, url)
         return false unless pattern && url
 
-        # Convert {param} to wildcards for matching
         pattern_with_wildcards = pattern.gsub(/\{[^}]+\}/, '*')
-        # Convert * wildcards to regex pattern - use [^/]+ to match path segments, not across slashes
-        # This ensures that {param} only matches a single path segment
         regex = Regexp.new("^#{pattern_with_wildcards.gsub('*', '[^/]+')}$")
 
         debug_log("pattern_match?: regex: #{regex.inspect}")

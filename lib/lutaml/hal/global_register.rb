@@ -4,14 +4,6 @@ require 'singleton'
 
 module Lutaml
   module Hal
-    # Global register for model registers
-    # This class is a singleton that manages the registration and retrieval of model registers.
-    # It ensures that each model register is unique and provides a way to access them globally.
-    #
-    # @example
-    #   global_register = GlobalRegister.instance
-    #   global_register.register(:example, ExampleModelRegister.new)
-    #   example_register = global_register.get(:example)
     class GlobalRegister
       include Singleton
 
@@ -44,17 +36,14 @@ module Lutaml
         delete(name)
       end
 
-      # Cache management methods for all registered model registers
       def clear_all_caches
-        @model_registers.each_value do |register|
-          register.clear_cache if register.respond_to?(:clear_cache)
-        end
+        @model_registers.each_value(&:clear_cache)
       end
 
       def cache_stats
         stats = {}
         @model_registers.each do |name, register|
-          stats[name] = register.cache_info if register.respond_to?(:cache_info)
+          stats[name] = register.cache_info
         end
         stats
       end

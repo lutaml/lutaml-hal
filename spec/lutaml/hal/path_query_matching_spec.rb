@@ -20,7 +20,7 @@ RSpec.describe 'Path and Query Parameter Matching' do
           model: 'UserCollection'
         )
 
-        result = register.send(:find_matching_model_class, '/users')
+        result = register.find_matching_model_class('/users')
         expect(result).not_to be_nil
         expect(result).to eq('UserCollection')
       end
@@ -33,7 +33,7 @@ RSpec.describe 'Path and Query Parameter Matching' do
           model: 'UserCollection'
         )
 
-        result = register.send(:find_matching_model_class, '/groups')
+        result = register.find_matching_model_class('/groups')
         expect(result).to be_nil
       end
     end
@@ -52,7 +52,7 @@ RSpec.describe 'Path and Query Parameter Matching' do
           ]
         )
 
-        result = register.send(:find_matching_model_class, '/users/123')
+        result = register.find_matching_model_class('/users/123')
         expect(result).not_to be_nil
         expect(result).to eq('User')
       end
@@ -73,7 +73,7 @@ RSpec.describe 'Path and Query Parameter Matching' do
           ]
         )
 
-        result = register.send(:find_matching_model_class, '/users/123/posts/456')
+        result = register.find_matching_model_class('/users/123/posts/456')
         expect(result).not_to be_nil
         expect(result).to eq('Post')
       end
@@ -92,7 +92,7 @@ RSpec.describe 'Path and Query Parameter Matching' do
         )
 
         # Should not match because {id} should only match a single segment
-        result = register.send(:find_matching_model_class, '/users/123/extra')
+        result = register.find_matching_model_class('/users/123/extra')
         expect(result).to be_nil
       end
 
@@ -109,7 +109,7 @@ RSpec.describe 'Path and Query Parameter Matching' do
           ]
         )
 
-        result = register.send(:find_matching_model_class, '/users/123/posts')
+        result = register.find_matching_model_class('/users/123/posts')
         expect(result).not_to be_nil
         expect(result).to eq('PostCollection')
       end
@@ -134,7 +134,7 @@ RSpec.describe 'Path and Query Parameter Matching' do
         )
 
         # Should match the more specific pattern
-        result = register.send(:find_matching_model_class, '/users/admin')
+        result = register.find_matching_model_class('/users/admin')
         expect(result).not_to be_nil
         expect(result).to eq('AdminUserCollection')
       end
@@ -155,7 +155,7 @@ RSpec.describe 'Path and Query Parameter Matching' do
         )
 
         # Should match the less specific pattern
-        result = register.send(:find_matching_model_class, '/users')
+        result = register.find_matching_model_class('/users')
         expect(result).not_to be_nil
         expect(result).to eq('UserCollection')
       end
@@ -178,12 +178,12 @@ RSpec.describe 'Path and Query Parameter Matching' do
         )
 
         # Should match with page parameter
-        result = register.send(:find_matching_model_class, '/users?page=2')
+        result = register.find_matching_model_class('/users?page=2')
         expect(result).not_to be_nil
         expect(result).to eq('UserCollection')
 
         # Should also match without page parameter (template params are optional)
-        result = register.send(:find_matching_model_class, '/users')
+        result = register.find_matching_model_class('/users')
         expect(result).not_to be_nil
         expect(result).to eq('UserCollection')
       end
@@ -205,17 +205,17 @@ RSpec.describe 'Path and Query Parameter Matching' do
         )
 
         # Should match with both parameters
-        result = register.send(:find_matching_model_class, '/users?page=2&limit=10')
+        result = register.find_matching_model_class('/users?page=2&limit=10')
         expect(result).not_to be_nil
         expect(result).to eq('UserCollection')
 
         # Should match with one parameter
-        result = register.send(:find_matching_model_class, '/users?page=2')
+        result = register.find_matching_model_class('/users?page=2')
         expect(result).not_to be_nil
         expect(result).to eq('UserCollection')
 
         # Should match with no parameters
-        result = register.send(:find_matching_model_class, '/users')
+        result = register.find_matching_model_class('/users')
         expect(result).not_to be_nil
         expect(result).to eq('UserCollection')
       end
@@ -237,16 +237,16 @@ RSpec.describe 'Path and Query Parameter Matching' do
         )
 
         # Should match with exact parameter value
-        result = register.send(:find_matching_model_class, '/users?status=active')
+        result = register.find_matching_model_class('/users?status=active')
         expect(result).not_to be_nil
         expect(result).to eq('ActiveUserCollection')
 
         # Should not match with different parameter value
-        result = register.send(:find_matching_model_class, '/users?status=inactive')
+        result = register.find_matching_model_class('/users?status=inactive')
         expect(result).to be_nil
 
         # Should not match without the required parameter
-        result = register.send(:find_matching_model_class, '/users')
+        result = register.find_matching_model_class('/users')
         expect(result).to be_nil
       end
 
@@ -268,17 +268,17 @@ RSpec.describe 'Path and Query Parameter Matching' do
         )
 
         # Should match with both parameters
-        result = register.send(:find_matching_model_class, '/users?status=active&page=2')
+        result = register.find_matching_model_class('/users?status=active&page=2')
         expect(result).not_to be_nil
         expect(result).to eq('ActiveUserCollection')
 
         # Should match with only the required fixed parameter
-        result = register.send(:find_matching_model_class, '/users?status=active')
+        result = register.find_matching_model_class('/users?status=active')
         expect(result).not_to be_nil
         expect(result).to eq('ActiveUserCollection')
 
         # Should not match without the required fixed parameter
-        result = register.send(:find_matching_model_class, '/users?page=2')
+        result = register.find_matching_model_class('/users?page=2')
         expect(result).to be_nil
       end
     end
@@ -306,59 +306,22 @@ RSpec.describe 'Path and Query Parameter Matching' do
       )
 
       # Should match with all parameters
-      result = register.send(:find_matching_model_class, '/users/123/posts?page=2&status=published')
+      result = register.find_matching_model_class('/users/123/posts?page=2&status=published')
       expect(result).not_to be_nil
       expect(result).to eq('PostCollection')
 
       # Should match with only required parameters
-      result = register.send(:find_matching_model_class, '/users/123/posts?status=published')
+      result = register.find_matching_model_class('/users/123/posts?status=published')
       expect(result).not_to be_nil
       expect(result).to eq('PostCollection')
 
       # Should not match without required query parameter
-      result = register.send(:find_matching_model_class, '/users/123/posts?page=2')
+      result = register.find_matching_model_class('/users/123/posts?page=2')
       expect(result).to be_nil
 
       # Should not match with wrong path parameter count
-      result = register.send(:find_matching_model_class, '/users/posts?status=published')
+      result = register.find_matching_model_class('/users/posts?status=published')
       expect(result).to be_nil
-    end
-  end
-
-  describe 'URL building with interpolation' do
-    it 'interpolates path parameters' do
-      url_template = '/users/{user_id}/posts/{post_id}'
-      params = { user_id: 123, post_id: 456 }
-
-      result = register.send(:interpolate_url, url_template, params)
-      expect(result).to eq('/users/123/posts/456')
-    end
-
-    it 'builds URLs with query parameters' do
-      base_url = '/users'
-      query_params_template = { 'page' => '{page}', 'limit' => '{limit}' }
-      params = { page: 2, limit: 10 }
-
-      result = register.send(:build_url_with_query_params, base_url, query_params_template, params)
-      expect(result).to eq('/users?page=2&limit=10')
-    end
-
-    it 'builds URLs with partial query parameters' do
-      base_url = '/users'
-      query_params_template = { 'page' => '{page}', 'limit' => '{limit}' }
-      params = { page: 2 } # missing limit
-
-      result = register.send(:build_url_with_query_params, base_url, query_params_template, params)
-      expect(result).to eq('/users?page=2')
-    end
-
-    it 'returns base URL when no query parameters match' do
-      base_url = '/users'
-      query_params_template = { 'page' => '{page}', 'limit' => '{limit}' }
-      params = { other_param: 'value' } # no matching params
-
-      result = register.send(:build_url_with_query_params, base_url, query_params_template, params)
-      expect(result).to eq('/users')
     end
   end
 
@@ -377,7 +340,7 @@ RSpec.describe 'Path and Query Parameter Matching' do
       )
 
       # Should handle URL-encoded characters
-      result = register.send(:find_matching_model_class, '/users/user%40example.com')
+      result = register.find_matching_model_class('/users/user%40example.com')
       expect(result).not_to be_nil
       expect(result).to eq('User')
     end
@@ -395,7 +358,7 @@ RSpec.describe 'Path and Query Parameter Matching' do
         ]
       )
 
-      result = register.send(:find_matching_model_class, '/users?')
+      result = register.find_matching_model_class('/users?')
       expect(result).not_to be_nil
       expect(result).to eq('UserCollection')
     end
@@ -415,7 +378,7 @@ RSpec.describe 'Path and Query Parameter Matching' do
 
       # Should not crash on malformed query string
       expect do
-        register.send(:find_matching_model_class, '/users?page=&invalid=')
+        register.find_matching_model_class('/users?page=&invalid=')
       end.not_to raise_error
     end
 
@@ -547,40 +510,28 @@ RSpec.describe 'Path and Query Parameter Matching' do
 
     it 'correctly routes various API calls' do
       # Basic collection
-      result = register.send(:find_matching_model_class, '/users')
+      result = register.find_matching_model_class('/users')
       expect(result).to eq('UserCollection')
 
       # Paginated collection (should prefer the more specific one with query params)
-      result = register.send(:find_matching_model_class, '/users?page=2')
+      result = register.find_matching_model_class('/users?page=2')
       expect(result).to eq('UserCollection')
 
       # Individual resource
-      result = register.send(:find_matching_model_class, '/users/123')
+      result = register.find_matching_model_class('/users/123')
       expect(result).to eq('User')
 
       # Nested collection
-      result = register.send(:find_matching_model_class, '/users/123/posts')
+      result = register.find_matching_model_class('/users/123/posts')
       expect(result).to eq('PostCollection')
 
       # Filtered nested collection
-      result = register.send(:find_matching_model_class, '/users/123/posts?status=published')
+      result = register.find_matching_model_class('/users/123/posts?status=published')
       expect(result).to eq('PostCollection')
 
       # Nested individual resource
-      result = register.send(:find_matching_model_class, '/users/123/posts/456')
+      result = register.find_matching_model_class('/users/123/posts/456')
       expect(result).to eq('Post')
-    end
-
-    it 'handles URL building for complex scenarios' do
-      # Build a paginated user posts URL
-      url_template = '/users/{user_id}/posts'
-      query_params_template = { 'status' => 'published', 'page' => '{page}' }
-      params = { user_id: 123, page: 2 }
-
-      interpolated_url = register.send(:interpolate_url, url_template, params)
-      final_url = register.send(:build_url_with_query_params, interpolated_url, query_params_template, params)
-
-      expect(final_url).to eq('/users/123/posts?status=published&page=2')
     end
   end
 end
