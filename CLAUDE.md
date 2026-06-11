@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build & Development Commands
 
 ```bash
-bundle install                  # Install dependencies (lutaml-store is a local path dependency)
+bundle install                  # Install dependencies (lutaml-store from rubygems)
 bundle exec rake                # Run specs + rubocop (default task)
 bundle exec rspec               # Run all specs
 bundle exec rspec spec/lutaml/hal/client_spec.rb       # Run a single spec file
@@ -71,7 +71,7 @@ The cache subsystem uses `Lutaml::Store::CacheStore` exclusively for persistence
 ### Dependencies
 
 - `lutaml-model`: serialization framework (Serializable, key_value mappings, attribute definitions)
-- `lutaml-store`: cache store abstraction with TTL, LRU, and multiple adapters (local path dependency at `../lutaml-store`)
+- `lutaml-store` (~> 0.2): cache store abstraction with TTL, LRU, and multiple adapters (memory/filesystem/sqlite)
 - `faraday` + `faraday-follow_redirects`: HTTP client
 
 ### Register ID Propagation
