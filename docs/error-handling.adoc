@@ -32,9 +32,35 @@ StandardError
     ├── Lutaml::Hal::LinkResolutionError
     ├── Lutaml::Hal::BadRequestError
     ├── Lutaml::Hal::UnauthorizedError
+    ├── Lutaml::Hal::ForbiddenError
     ├── Lutaml::Hal::NotFoundError
     ├── Lutaml::Hal::TooManyRequestsError
     └── Lutaml::Hal::ServerError
+----
+
+== HTTP context on errors
+
+`Lutaml::Hal::Error` exposes a `response` attribute. For errors mapped from an
+HTTP status that carries useful retry information -- `ForbiddenError` (403),
+`TooManyRequestsError` (429) and `ServerError` (5xx) -- it holds a hash of the
+response status and headers:
+
+[source,ruby]
+----
+begin
+  client.get('/api/products')
+rescue Lutaml::Hal::TooManyRequestsError => e
+  e.response[:status]                       # => 429
+  e.response[:headers]['Retry-After']       # => "120"
+end
+----
+
+For every other error -- and for errors you construct yourself -- `response` is
+`nil`, so guard on the value rather than on the method being defined:
+
+[source,ruby]
+----
+retry_after = e.response && e.response[:headers]['Retry-After']
 ----
 
 == Error types
@@ -144,6 +170,39 @@ end
 ----
 ====
 
+==== ForbiddenError (HTTP 403)
+
+*When it occurs*: The server understood the request but refuses to fulfil it.
+
+*Common causes*:
+
+* Credentials are valid but lack permission for this resource
+* The resource is restricted to certain clients or networks
+* The API uses 403 as a rate-limiting signal (the W3C API historically did)
+
+*Special features*:
+
+* Carries `response` with status and headers, so a `Retry-After` header sent
+  alongside a 403 is available to callers
+* Not retried by default. If your API uses 403 to mean "slow down", enable
+  `retry_on_forbidden` -- see link:rate-limiting.adoc[Rate limiting]
+
+[example]
+====
+[source,ruby]
+----
+begin
+  response = client.get('/api/restricted')
+rescue Lutaml::Hal::ForbiddenError => e
+  puts "Access denied: #{e.message}"
+end
+----
+====
+
+NOTE: Before this error class existed, a 403 raised a bare `Lutaml::Hal::Error`.
+`ForbiddenError` inherits from `Lutaml::Hal::Error`, so existing rescue clauses
+keep working.
+
 ==== NotFoundError (HTTP 404)
 
 *When it occurs*: The requested resource does not exist.
@@ -180,7 +239,7 @@ end
 
 *Special features*:
 
-* May include `response` method with status and headers
+* Carries `response` with status and headers
 * Often includes `Retry-After` header information
 
 [example]
@@ -193,7 +252,7 @@ rescue Lutaml::Hal::TooManyRequestsError => e
   puts "Rate limit exceeded: #{e.message}"
 
   # Check for retry information
-  if e.respond_to?(:response) && e.response[:headers]['Retry-After']
+  if e.response && e.response[:headers]['Retry-After']
     retry_after = e.response[:headers]['Retry-After'].to_i
     puts "Retry after #{retry_after} seconds"
     sleep(retry_after)
@@ -216,7 +275,7 @@ end
 
 *Special features*:
 
-* May include `response` method with status and headers
+* Carries `response` with status and headers
 * Often indicates temporary issues that may resolve with retry
 
 [example]
@@ -229,7 +288,7 @@ rescue Lutaml::Hal::ServerError => e
   puts "Server error: #{e.message}"
 
   # Check specific status code
-  if e.respond_to?(:response)
+  if e.response
     case e.response[:status]
     when 502, 503
       puts "Service temporarily unavailable, retrying..."
@@ -450,6 +509,7 @@ RETRYABLE_ERRORS = [
 NON_RETRYABLE_ERRORS = [
   Lutaml::Hal::BadRequestError,
   Lutaml::Hal::UnauthorizedError,
+  Lutaml::Hal::ForbiddenError,
   Lutaml::Hal::NotFoundError
 ].freeze
 ----
