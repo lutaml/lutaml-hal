@@ -53,7 +53,7 @@ The rate limiter uses the following algorithm:
 . Make the initial HTTP request
 . If the response is 429 or 5xx, determine if retry should be attempted
 . Calculate delay using either `Retry-After` header or exponential backoff
-. Wait for the calculated delay (with jitter)
+. Wait for the calculated delay
 . Retry the request up to the maximum retry limit
 
 
@@ -91,8 +91,64 @@ client.configure_rate_limiting(
 ----
 <1> Maximum number of retry attempts
 <2> Initial delay in seconds
-<3> Maximum delay cap in seconds
+<3> Maximum delay cap in seconds, for delays *we* calculate (exponential backoff)
 <4> Exponential backoff multiplier
+
+The same options can be passed when constructing a client:
+
+[source,ruby]
+----
+client = Lutaml::Hal::Client.new(
+  api_url: 'https://api.example.com',
+  rate_limiting: { max_retries: 5, base_delay: 0.5, max_delay: 30.0 }
+)
+----
+
+
+=== Bounding server-instructed waits
+
+`max_delay` bounds the delays lutaml-hal calculates for itself. When the server
+sends a `Retry-After` header it is stating how long to wait, and that is honoured
+in full -- subject to a separate, much larger cap:
+
+`max_retry_after`:: Maximum `Retry-After` wait in seconds. Default `300.0`.
+
+[source,ruby]
+----
+client = Lutaml::Hal::Client.new(
+  api_url: 'https://api.example.com',
+  rate_limiting: { max_retry_after: 60.0 }
+)
+----
+
+The two caps are deliberately separate. Bounding `Retry-After` by the (much
+smaller) `max_delay` would mean retrying well before the server said to, which
+hammers an API that has explicitly asked for room. `max_retry_after` exists only
+to stop an extreme value -- `Retry-After: 3600` -- parking a worker thread for
+an hour.
+
+A `Retry-After` of `0`, or an HTTP-date already in the past, is floored at
+`base_delay` so the retry budget cannot be burned in a busy loop.
+
+
+=== Retrying on HTTP 403
+
+By default a `Lutaml::Hal::ForbiddenError` (HTTP 403) is *not* retried -- 403
+normally means "not allowed", and retrying it just wastes requests.
+
+Some APIs use 403 as a rate-limiting signal instead of 429 (the W3C API
+historically did). For those, enable `retry_on_forbidden`:
+
+[source,ruby]
+----
+client = Lutaml::Hal::Client.new(
+  api_url: 'https://api.example.com',
+  rate_limiting: { retry_on_forbidden: true }
+)
+----
+
+With this enabled, 403 responses are retried on the same schedule as 429, and a
+`Retry-After` header sent with the 403 is honoured (capped at `max_delay`).
 
 
 === Enable/disable rate limiting
@@ -121,15 +177,15 @@ end
 The rate limiting algorithm follows these steps:
 
 . **Initial Request**: Make the HTTP request normally
-. **Error Detection**: Check for 429 or 5xx status codes
+. **Error Detection**: Check for 429 or 5xx status codes (and 403 when
+  `retry_on_forbidden` is enabled)
 . **Retry Decision**: Determine if retry should be attempted based on:
 ** Current retry count vs. max_retries
-** Error type (429 or 5xx)
+** Error type (429 or 5xx; 403 only when `retry_on_forbidden` is enabled)
 . **Delay Calculation**:
-** Use `Retry-After` header if present
-** Otherwise use exponential backoff: `base_delay * (backoff_factor ^ retry_count)`
-** Cap at `max_delay`
-** Add jitter to prevent synchronized retries
+** Use `Retry-After` header if present, bounded to `base_delay`..`max_retry_after`
+** Otherwise use exponential backoff: `base_delay * (backoff_factor ^ retry_count)`,
+   capped at `max_delay`
 . **Wait and Retry**: Sleep for calculated delay, then retry request
 
 === Exponential Backoff Formula
@@ -148,8 +204,9 @@ With default settings:
 
 === Jitter
 
-A small random jitter (±10%) is added to prevent the "thundering herd" problem
-when multiple clients retry simultaneously.
+NOTE: Not currently implemented. Delays are deterministic, so many workers that
+hit the same rate limit at the same moment will retry in lockstep. If that
+matters for your workload, stagger the work before it reaches the client.
 
 == Usage examples
 

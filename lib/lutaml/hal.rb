@@ -16,6 +16,7 @@ module Lutaml
     autoload :NotFoundError, 'lutaml/hal/errors'
     autoload :UnauthorizedError, 'lutaml/hal/errors'
     autoload :BadRequestError, 'lutaml/hal/errors'
+    autoload :ForbiddenError, 'lutaml/hal/errors'
     autoload :ServerError, 'lutaml/hal/errors'
     autoload :LinkResolutionError, 'lutaml/hal/errors'
     autoload :ParsingError, 'lutaml/hal/errors'
