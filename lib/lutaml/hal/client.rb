@@ -2,7 +2,7 @@
 
 require 'faraday'
 require 'faraday/follow_redirects'
-require 'json'
+require 'yeptris'
 require 'rainbow'
 
 module Lutaml
@@ -59,7 +59,9 @@ module Lutaml
       def get(url, params = {})
         with_faraday_errors do
           @rate_limiter.with_rate_limiting do
-            handle_response(record_response(@connection.get(url, params)), url)
+            response = @connection.get(url, params)
+            parse_json_body(response)
+            handle_response(record_response(response), url)
           end
         end
       end
@@ -70,6 +72,7 @@ module Lutaml
             response = @connection.get(url) do |req|
               headers.each { |key, value| req.headers[key] = value }
             end
+            parse_json_body(response)
             handle_response(record_response(response), url)
           end
         end
@@ -100,10 +103,32 @@ module Lutaml
       def create_connection
         Faraday.new(url: @api_url) do |conn|
           conn.use Faraday::FollowRedirects::Middleware
-          conn.request :json
-          conn.response :json, content_type: /\bjson$/
           conn.adapter Faraday.default_adapter
         end
+      end
+
+      # The Faraday `response :json` middleware is deliberately not installed:
+      # it parses with `::JSON.parse(body, @parser_options || {})` — a
+      # positional options hash json 3.0 rejects — which used to force a
+      # json < 3 pin on every dependent bundle. JSON bodies are parsed here,
+      # with yeptris, under the same content-type matcher the middleware
+      # used, so the parsed/unparsed split does not move.
+      def parse_json_body(response)
+        # Only String bodies are parsed — the middleware this replaces parsed
+        # nothing else (a Hash body arrives already materialized, as from a
+        # Faraday test adapter).
+        return response unless response.body.is_a?(String)
+
+        content_type = response.headers['Content-Type'].to_s
+        return response unless content_type.match?(/\bjson$/)
+
+        # Faraday::Response exposes body read-only; env is where the
+        # middleware itself wrote it, so the parsed value stays visible to
+        # #last_response consumers exactly as it was under the middleware.
+        response.env.body = Yeptris::JSON.load(response.body)
+        response
+      rescue Yeptris::JSON::ParseError => e
+        raise ParsingError, "Response parsing error: #{e.message}"
       end
 
       def handle_response(response, url)
@@ -147,11 +172,11 @@ module Lutaml
 
         puts "\nHeaders:"
         headers_hash = response.headers.to_h
-        puts JSON.pretty_generate(headers_hash)
+        puts Yeptris::JSON.dump(headers_hash, pretty: true)
 
         puts "\nResponse body:"
         if response.body.is_a?(Hash) || response.body.is_a?(Array)
-          puts JSON.pretty_generate(response.body)
+          puts Yeptris::JSON.dump(response.body, pretty: true)
         else
           puts response.body.inspect
         end

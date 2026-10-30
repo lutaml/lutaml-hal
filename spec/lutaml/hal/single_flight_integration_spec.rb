@@ -29,7 +29,6 @@ RSpec.describe 'ModelRegister single-flight coalescing' do
 
   let(:register) do
     conn = Faraday.new do |f|
-      f.response :json, content_type: /json/
       f.adapter :test, stubs
     end
     client = Lutaml::Hal::Client.new(api_url: 'https://api.example.com', connection: conn)

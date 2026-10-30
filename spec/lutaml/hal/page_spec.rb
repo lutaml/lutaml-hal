@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative '../../spec_helper'
+require 'faraday'
 
 module PageSpec
   class PageModel < Lutaml::Hal::Page
@@ -15,7 +16,6 @@ RSpec.describe Lutaml::Hal::Page do
   let(:connection) do
     Faraday.new do |builder|
       builder.request :json
-      builder.response :json, content_type: /\bjson$/
       builder.adapter :test, stubs
     end
   end
