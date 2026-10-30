@@ -119,7 +119,10 @@ module Lutaml
         # Faraday test adapter).
         return response unless response.body.is_a?(String)
 
-        content_type = response.headers['Content-Type'].to_s
+        # The matcher applies to the bare type: parameters split off before
+        # it, exactly as the middleware did
+        # ("application/hal+json;version=1.0" parses).
+        content_type = response.headers['Content-Type'].to_s.split(';', 2).first.to_s
         return response unless content_type.match?(/\bjson$/)
 
         # Faraday::Response exposes body read-only; env is where the

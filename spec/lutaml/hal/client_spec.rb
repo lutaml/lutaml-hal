@@ -317,6 +317,12 @@ RSpec.describe Lutaml::Hal::Client do
       expect(client_with_test_adapter.get('/parsed')).to eq('a' => 1)
     end
 
+    it 'parses a parameterized JSON content type' do
+      stubs.get('/hal') { [200, { 'Content-Type' => 'application/hal+json;version=1.0' }, '{"a":1}'] }
+
+      expect(client_with_test_adapter.get('/hal')).to eq('a' => 1)
+    end
+
     it 'raises ParsingError for a body that is not strict JSON' do
       stubs.get('/broken') { [200, { 'Content-Type' => 'application/json' }, '{bad'] }
 
