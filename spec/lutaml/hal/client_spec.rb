@@ -30,7 +30,6 @@ RSpec.describe Lutaml::Hal::Client do
     let(:connection) do
       Faraday.new do |builder|
         builder.request :json
-        builder.response :json, content_type: /\bjson$/
         builder.adapter :test, stubs
       end
     end
@@ -112,7 +111,6 @@ RSpec.describe Lutaml::Hal::Client do
     let(:connection) do
       Faraday.new do |builder|
         builder.request :json
-        builder.response :json, content_type: /\bjson$/
         builder.adapter :test, stubs
       end
     end
@@ -217,7 +215,6 @@ RSpec.describe Lutaml::Hal::Client do
     let(:connection) do
       Faraday.new do |builder|
         builder.request :json
-        builder.response :json, content_type: /\bjson$/
         builder.adapter :test, stubs
       end
     end
@@ -272,7 +269,6 @@ RSpec.describe Lutaml::Hal::Client do
     let(:connection) do
       Faraday.new do |builder|
         builder.request :json
-        builder.response :json, content_type: /\bjson$/
         builder.adapter :test, stubs
       end
     end
@@ -293,6 +289,45 @@ RSpec.describe Lutaml::Hal::Client do
 
       result = client_with_test_adapter.get_with_headers('/success', { 'Authorization' => 'Bearer token' })
       expect(result).to eq(response_data)
+    end
+  end
+
+  # The Faraday `response :json` middleware parses with
+  # `::JSON.parse(body, @parser_options || {})` — a positional options hash
+  # json 3.0 rejects — which forced a json < 3 pin on every dependent bundle.
+  # The default stack installs no JSON middleware; bodies parse here, with
+  # yeptris, under the same content-type matcher.
+  describe 'JSON parsing' do
+    let(:stubs) { Faraday::Adapter::Test::Stubs.new }
+    let(:connection) do
+      Faraday.new do |builder|
+        builder.adapter :test, stubs
+      end
+    end
+    let(:client_with_test_adapter) { described_class.new(api_url: api_url, connection: connection) }
+
+    it 'installs no JSON middleware on the default connection' do
+      client = described_class.new(api_url: api_url)
+      expect(client.connection.builder.handlers).not_to include(:json)
+    end
+
+    it 'parses a JSON body with yeptris' do
+      stubs.get('/parsed') { [200, { 'Content-Type' => 'application/json' }, '{"a":1}'] }
+
+      expect(client_with_test_adapter.get('/parsed')).to eq('a' => 1)
+    end
+
+    it 'raises ParsingError for a body that is not strict JSON' do
+      stubs.get('/broken') { [200, { 'Content-Type' => 'application/json' }, '{bad'] }
+
+      expect { client_with_test_adapter.get('/broken') }
+        .to raise_error(Lutaml::Hal::ParsingError)
+    end
+
+    it 'leaves a non-JSON body unparsed' do
+      stubs.get('/plain') { [200, { 'Content-Type' => 'text/plain' }, '1e3'] }
+
+      expect(client_with_test_adapter.get('/plain')).to eq('1e3')
     end
   end
 end

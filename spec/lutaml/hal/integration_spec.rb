@@ -50,7 +50,6 @@ RSpec.describe 'Lutaml::Hal::IntegrationSpec' do
   let(:connection) do
     Faraday.new do |builder|
       builder.request :json
-      builder.response :json, content_type: /\bjson$/
       builder.adapter :test, stubs
     end
   end

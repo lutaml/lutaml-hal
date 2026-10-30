@@ -29,4 +29,8 @@ Gem::Specification.new do |spec|
   spec.add_dependency 'lutaml-model', '~> 0.8.114'
   spec.add_dependency 'lutaml-store', '~> 0.3'
   spec.add_dependency 'rainbow', '~> 3.0'
+  # JSON bodies are parsed with yeptris (strict RFC 8259 surface), not the
+  # `json` gem: Faraday's `response :json` middleware parses positionally and
+  # forces a json < 3 pin on dependent bundles. The floor is the owner's call.
+  spec.add_dependency 'yeptris'
 end
