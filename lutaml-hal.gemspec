@@ -24,13 +24,14 @@ Gem::Specification.new do |spec|
   spec.require_paths = ['lib']
 
   # Runtime dependencies
-  spec.add_dependency 'faraday', '~> 2.0'
-  spec.add_dependency 'faraday-follow_redirects', '~> 0.3'
-  spec.add_dependency 'lutaml-model', '~> 0.8.114'
-  spec.add_dependency 'lutaml-store', '~> 0.3'
-  spec.add_dependency 'rainbow', '~> 3.0'
+  spec.add_dependency 'faraday', '~> 2.7'
+  spec.add_dependency 'faraday-follow_redirects', '~> 0.5'
+  spec.add_dependency 'lutaml-model', '~> 0.8.148'
+  spec.add_dependency 'lutaml-store', '~> 0.3.2'
+  spec.add_dependency 'rainbow', '~> 3.1'
   # JSON bodies are parsed with yeptris (strict RFC 8259 surface), not the
   # `json` gem: Faraday's `response :json` middleware parses positionally and
   # forces a json < 3 pin on dependent bundles. The floor is the owner's call.
-  spec.add_dependency 'yeptris'
+  # The co-init fix (#336) and the boundary opt-out ride 0.6.51.
+  spec.add_dependency 'yeptris', '~> 0.6.51'
 end
